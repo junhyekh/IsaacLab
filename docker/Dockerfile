@@ -37,6 +37,8 @@ RUN wget -qO /etc/apt/sources.list.d/lunarg-vulkan-1.3.290-jammy.list https://pa
 RUN apt update
 RUN apt install -y vulkan-sdk
 RUN apt install -y libxt-dev
+# REQUIRED?
+RUN apt install -y libxt6
 
 COPY nvidia_icd.json /usr/share/vulkan/icd.d/nvidia_icd.json
 COPY 10_nvidia.json /usr/share/glvnd/egl_vendor.d/10_nvidia.json
