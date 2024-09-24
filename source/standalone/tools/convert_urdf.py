@@ -68,6 +68,8 @@ import carb
 import omni.isaac.core.utils.stage as stage_utils
 import omni.kit.app
 
+from omni.isaac.version import get_version
+
 from omni.isaac.lab.sim.converters import UrdfConverter, UrdfConverterCfg
 from omni.isaac.lab.utils.assets import check_file_path
 from omni.isaac.lab.utils.dict import print_dict
@@ -91,11 +93,13 @@ def main():
         usd_dir=os.path.dirname(dest_path),
         usd_file_name=os.path.basename(dest_path),
         fix_base=args_cli.fix_base,
+        convex_decompose_mesh=True,
         merge_fixed_joints=args_cli.merge_joints,
         force_usd_conversion=True,
         make_instanceable=args_cli.make_instanceable,
+        self_collision=True
     )
-
+    print(urdf_converter_cfg)
     # Print info
     print("-" * 80)
     print("-" * 80)
@@ -136,6 +140,7 @@ def main():
 
 if __name__ == "__main__":
     # run the main function
+    print(get_version())
     main()
     # close sim app
     simulation_app.close()

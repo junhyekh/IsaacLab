@@ -133,6 +133,8 @@ class UrdfConverter(AssetConverterBase):
         import_config.set_make_instanceable(cfg.make_instanceable)
         import_config.set_instanceable_usd_path(self.usd_instanceable_meshes_path)
 
+        import_config.collision_from_visuals = False
+
         # -- asset settings
         # default density used for links, use 0 to auto-compute
         import_config.set_density(cfg.link_density)
@@ -141,6 +143,8 @@ class UrdfConverter(AssetConverterBase):
         # decompose a convex mesh into smaller pieces for a closer fit
         import_config.set_convex_decomp(cfg.convex_decompose_mesh)
         import_config.set_subdivision_scheme(_NORMALS_DIVISION["bilinear"])
+
+        # import_config.set_parse_mimic(True)
 
         # -- physics settings
         # create fix joint for base link

@@ -57,3 +57,6 @@ _build
 **/runs/*
 **/logs/*
 **/recordings/*
+
+.asset_hash
+config.yaml
