@@ -59,7 +59,7 @@ known_local_folder = "config"
 
 [tool.pyright]
 
-include = ["source/extensions", "source/standalone"]
+include = ["source/extensions", "source/standalone", "source/env"]
 exclude = [
     "**/__pycache__",
     "**/_isaac_sim",
