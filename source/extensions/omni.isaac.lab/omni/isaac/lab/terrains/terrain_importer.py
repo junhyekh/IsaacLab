@@ -8,7 +8,7 @@ from __future__ import annotations
 import numpy as np
 import torch
 import trimesh
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 import warp
 from pxr import UsdGeom
@@ -300,7 +300,9 @@ class TerrainImporter:
             if self.cfg.env_spacing is None:
                 raise ValueError("Environment spacing must be specified for configuring grid-like origins.")
             # compute environment origins
-            self.env_origins = self._compute_env_origins_grid(self.cfg.num_envs, self.cfg.env_spacing)
+            self.env_origins = self._compute_env_origins_grid(self.cfg.num_envs,
+                                                              self.cfg.env_spacing,
+                                                              self.cfg.env_spacing_dy)
 
     def update_env_origins(self, env_ids: torch.Tensor, move_up: torch.Tensor, move_down: torch.Tensor):
         """Update the environment origins based on the terrain levels."""
@@ -346,7 +348,8 @@ class TerrainImporter:
         env_origins[:] = origins[self.terrain_levels, self.terrain_types]
         return env_origins
 
-    def _compute_env_origins_grid(self, num_envs: int, env_spacing: float) -> torch.Tensor:
+    def _compute_env_origins_grid(self, num_envs: int, dx: float,
+                                  dy: Optional[float] = None) -> torch.Tensor:
         """Compute the origins of the environments in a grid based on configured spacing."""
         # create tensor based on number of environments
         env_origins = torch.zeros(num_envs, 3, device=self.device)
@@ -356,7 +359,9 @@ class TerrainImporter:
         ii, jj = torch.meshgrid(
             torch.arange(num_rows, device=self.device), torch.arange(num_cols, device=self.device), indexing="ij"
         )
-        env_origins[:, 0] = -(ii.flatten()[:num_envs] - (num_rows - 1) / 2) * env_spacing
-        env_origins[:, 1] = (jj.flatten()[:num_envs] - (num_cols - 1) / 2) * env_spacing
+        if dy is None:
+            dy = dx
+        env_origins[:, 0] = -(ii.flatten()[:num_envs] - (num_rows - 1) / 2) * dx
+        env_origins[:, 1] = (jj.flatten()[:num_envs] - (num_cols - 1) / 2) * dy
         env_origins[:, 2] = 0.0
         return env_origins

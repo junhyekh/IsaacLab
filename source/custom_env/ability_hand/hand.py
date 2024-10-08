@@ -40,7 +40,8 @@ from omni.isaac.lab.utils import configclass
 from omni.isaac.lab.utils.assets import ISAAC_NUCLEUS_DIR
 from omni.isaac.lab.utils.math import sample_uniform, matrix_from_quat, euler_xyz_from_quat
 from omni.isaac.lab.sim.converters import UrdfConverterCfg, UrdfConverter
-
+import omni.isaac.core.utils.prims as prim_utils
+from custom_env.scene.dgn_object_set import DGNObjectSet
 def _list2str(d):
     return ' '.join(['{x:.03f}'.format(x=float(x)) for x in d])
 
@@ -99,7 +100,7 @@ class RenderEnvCfg(DirectRLEnvCfg):
     # env
     episode_length_s = 5.3333  # 500 timesteps
     decimation = 2
-    num_actions = 9
+    num_actions = 13
     num_observations = 23
     num_states = 0
 
@@ -189,7 +190,8 @@ class RenderEnvCfg(DirectRLEnvCfg):
     robot = ArticulationCfg(
         prim_path="/World/envs/env_.*/Robot",
         spawn=sim_utils.UsdFileCfg(
-             usd_path="/input/robot/franka_description/robots/usd6/hand_flip.usd",
+            #  usd_path="/input/robot/franka_description/robots/usd6/hand_flip.usd",
+            usd_path="/input/robot/franka_description/robots/fr3_hand_usd/fr3_ability_hand.usd",
             activate_contact_sensors=False,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 disable_gravity=True,
@@ -200,15 +202,15 @@ class RenderEnvCfg(DirectRLEnvCfg):
             ),
         ),
         init_state=ArticulationCfg.InitialStateCfg(
-            # joint_pos={
-            #     "fr3_joint1": 1.157,
-            #     "fr3_joint2": -1.066,
-            #     "fr3_joint3": -0.155,
-            #     "fr3_joint4": -2.239,
-            #     "fr3_joint5": -1.841,
-            #     "fr3_joint6": 1.003,
-            #     "fr3_joint7": 0.469,
-            # },
+            joint_pos={
+                "fr3_joint1": 1.157,
+                "fr3_joint2": -1.066,
+                "fr3_joint3": -0.155,
+                "fr3_joint4": -2.239,
+                "fr3_joint5": -1.841,
+                "fr3_joint6": 1.003,
+                "fr3_joint7": 0.469,
+            },
             pos=(-0.3, 0.0, 0.0),
             rot=(1.0, 0.0, 0.0, 0.0),
         ),
@@ -334,80 +336,82 @@ class RednerEnv(DirectRLEnv):
                             ))
         
     def _setup_scene(self):
-        self._robot = Articulation(self.cfg.robot)
-        self.scene.articulations["robot"] = self._robot
+        self.dgn = DGNObjectSet(DGNObjectSet.Config(data_path="/input/DGN/meta-v8",
+                                                    pose_path="/input/DGN/meta-v8/unique_dgn_poses"))
+        # self._robot = Articulation(self.cfg.robot)
+        # self.scene.articulations["robot"] = self._robot
        
         self.cfg.terrain.num_envs = self.scene.cfg.num_envs
         self.cfg.terrain.env_spacing = self.scene.cfg.env_spacing
         self._terrain = self.cfg.terrain.class_type(self.cfg.terrain)
         # clone, filter, and replicate
-        self.scene.clone_environments(copy_from_source=False)
-        self.scene.filter_collisions(global_prim_paths=[self.cfg.terrain.prim_path])
+        origins = self._terrain.env_origins.detach().clone().cpu().numpy()
+
+        for i in range(0, self.scene.num_envs):
+            prim_utils.create_prim(self.scene.env_prim_paths[i],
+                                   "Xform", translation=origins[i])
+        self._robot = Articulation(self.cfg.robot)
+        self.scene.articulations["robot"] = self._robot
+
+        # self.scene.clone_environments(copy_from_source=False)
 
         # create cabinet
-        origins = self.scene.env_origins.detach().clone().cpu().numpy()
-        print(self.scene.env_prim_paths)
+        # origins = self.scene.env_origins.detach().clone().cpu().numpy()
+        # print(self.scene.env_prim_paths)
         
-        # for i in range(1, self.scene.num_envs):
-        #     if False:
-        #         self._create_boxes(self._data['box_dim'][i],
-        #                         self._data['box_pose'][i],
-        #                             self.scene.env_prim_paths[i],
-        #                             origins[i], i)
-        #     else:
-        #         dest_path = F'/gate/boxes/0000/env_{i}/box.usd'
-        #         if not Path(dest_path).exists():
-        #             urdf_file = F'/gate/boxes/dump/env_{i}.urdf'
-        #             xyzs = []
-        #             rpys = []
-        #             dims = []
-        #             for i_part, part in enumerate(self._data['box_dim'][i]):
-        #                 xyz = _list2str(self._data['box_pose'][i][i_part][:3])
-        #                 euler = euler_xyz_from_quat(
-        #                     torch.as_tensor(self._data['box_pose'][i][i_part][3:7]).roll(1,-1)[None])
-        #                 euler = [d.squeeze(0) for d in euler]
-        #                 rpy = _list2str(euler)
-        #                 xyzs.append(xyz)
-        #                 rpys.append(rpy)
-        #                 dims.append(list(part))
-        #             urdf_text: str = '''
-        #             <robot name="robot">
-        #             {box}
-        #             </robot>
-        #             '''.format(
-        #             box=multi_box_link(
-        #                 F'base_link',
-        #                 dims,
-        #                 xyzs,
-        #                 rpys,
-        #                 density=0.0
-        #                 )
-        #             )
-        #             urdf_file = F'/gate/boxes/0000/env_{i}/box.urdf'
-        #             os.makedirs(F'/gate/boxes/0000/env_{i}/',
-        #                         exist_ok=True)
-        #             with open(str(urdf_file), 'w') as fp:
-        #                 fp.write(urdf_text)
+        object_keys = [k for k in self.dgn.keys()]
+        # print(type(object_keys))
+        object_keys = np.random.choice(object_keys, size=(self.scene.num_envs,))
+        for i in range(0, self.scene.num_envs):
+            obj_key = object_keys[i]
+            obj_usd = self.dgn.usd(obj_key)
+            if not Path(obj_usd).exists():
+                urdf_file = self.dgn.urdf(obj_key)
+                urdf_converter_cfg = UrdfConverterCfg(
+                        asset_path=urdf_file,
+                        usd_dir=os.path.dirname(obj_usd),
+                        usd_file_name=os.path.basename(obj_usd),
+                        fix_base=False,
+                        convex_decompose_mesh=True,
+                        merge_fixed_joints=True,
+                        force_usd_conversion=True,
+                        make_instanceable=False,
+                    )
+                urdf_converter = UrdfConverter(urdf_converter_cfg)
+            # scale = self._data['obj_scale'][i]
+            scale =0.8
+            obj_cfg = sim_utils.UsdFileCfg(usd_path=obj_usd,
+                                rigid_props=sim_utils.RigidBodyPropertiesCfg(),
+                                # collision_props=sim_utils.CollisionPropertiesCfg(),
+                                scale=(scale, scale, scale),
+                                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0., 0., 0.2,),
+                                                                            emissive_color=(0.0,0.0,0.1),
+                                                                            metallic=0.1,
+                                                                            roughness=0.2))
+            pose = self.dgn.pose(obj_key)
+            print(pose)
+            init, goal = np.random.choice(range(pose.shape[0]), size=(2,))
+            init = pose[init]
+            goal = pose[goal]
+            # print(pose, goal)
+            obj_cfg.func(f"{self.scene.env_prim_paths[i]}/object", obj_cfg,
+                        translation=(0, 0, init[2]+0.05),
+                        orientation=(init[6], init[3], init[4], init[5]))
+            
+            goal_cfg = sim_utils.UsdFileCfg(usd_path=obj_usd,
+                                rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+                                collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=False),
+                                scale=(scale, scale, scale),
+                                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.2, 0., 0.,),
+                                                                            emissive_color=(0.1,0.0,0.0),
+                                                                            metallic=0.1,
+                                                                            roughness=0.2,
+                                                                            ))
+            goal_cfg.func(f"{self.scene.env_prim_paths[i]}/goal", goal_cfg,
+                        translation=(0, 0, goal[2]+0.15),
+                        orientation=(goal[6], goal[3], goal[4], goal[5]))
 
-        #             urdf_converter_cfg = UrdfConverterCfg(
-        #                 asset_path=urdf_file,
-        #                 usd_dir=os.path.dirname(dest_path),
-        #                 usd_file_name=os.path.basename(dest_path),
-        #                 fix_base=True,
-        #                 convex_decompose_mesh=True,
-        #                 merge_fixed_joints=True,
-        #                 force_usd_conversion=True,
-        #                 make_instanceable=False,
-        #             )
-        #             urdf_converter = UrdfConverter(urdf_converter_cfg)
-        #         box_cfg = sim_utils.UsdFileCfg(usd_path=dest_path,
-        #                        rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
-        #                     #    collision_props=sim_utils.CollisionPropertiesCfg()
-        #                     visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 1.0, 1.0,),
-        #                                                                 emissive_color=(0.3,0.3,0.3),
-        #                                                                 metallic=0.1,
-        #                                                                 roughness=0.2))
-        #         box_cfg.func(f"{self.scene.env_prim_paths[i]}/box", box_cfg, translation=(0, 0.0, 0.0))
+        self.scene.filter_collisions(global_prim_paths=[self.cfg.terrain.prim_path])
 
         # add lights
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
@@ -464,7 +468,7 @@ class RednerEnv(DirectRLEnv):
                                               self._mimic_sources,
                                             # None,
                                               env_ids=env_ids)
-        self._robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
+        self._robot.write_joint_state_to_sim(joint_vel, joint_vel, None, env_ids)
     
     def _get_observations(self):
         return {}
@@ -525,7 +529,7 @@ def main():
     # joint_data = torch.take_along_dim(joint_data.mean(-1)[0],
     #                                   joint_targets)
     joint_data = joint_data.mean(-1)
-    joint_data[:] = 0.
+    # joint_data[:] = 0.
 
     # joint_data[:,7:] = 0
     # joint_data[:] = 0.

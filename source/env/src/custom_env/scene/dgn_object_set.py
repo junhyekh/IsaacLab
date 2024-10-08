@@ -102,6 +102,8 @@ class DGNObjectSet(ObjectSet):
                     self.pose_path = F'{data_path}/pose'
                 if self.code_path is None:
                     self.code_path = F'{data_path}/code'
+                if self.usd_path is None:
+                    self.usd_path = F'{data_path}/usd'
 
     def __init__(self, cfg: Config):
         self.cfg = cfg

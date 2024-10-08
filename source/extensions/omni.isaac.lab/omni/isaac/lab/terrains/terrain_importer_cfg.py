@@ -64,6 +64,10 @@ class TerrainImporterCfg:
       This parameter is used only when the ``terrain_type`` is ``"plane"`` or ``"usd"``.
     """
 
+    env_spacing_dy: float | None = None
+    """[Optional] Y directional spacing between environment origins when defined in a grid. Defaults to None."""
+
+
     visual_material: sim_utils.VisualMaterialCfg | None = sim_utils.PreviewSurfaceCfg(
         diffuse_color=(0.065, 0.0725, 0.080)
     )

@@ -11,5 +11,6 @@ if __name__ == '__main__':
               relative_to=__file__,
               version_scheme='no-guess-dev'
           ),
-          scripts=[]
+          scripts=[],
+          version='1.1'
           )
