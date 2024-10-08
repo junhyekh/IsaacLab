@@ -24,6 +24,7 @@ mkdir -p "${CACHE_PATH}"
 docker run -it -e DISPLAY -e TERM -e QT_X11_NO_MITSHM=1 \
     -e XAUTHORITY=${__ISAACLAB_TMP_XAUTH} -v /tmp/.X11-unix:/tmp/.X11-unix \
     -v ${__ISAACLAB_TMP_XAUTH}:${__ISAACLAB_TMP_XAUTH} -v /etc/localtime:/etc/localtime:ro \
+    --mount type=bind,source="/usr/share/nvidia/nvoptix.bin",target="/usr/share/nvidia/nvoptix.bin" \
     --mount type=bind,source="${REPO_ROOT}",target="/home/user/$(basename ${REPO_ROOT})" \
     --mount type=bind,source="${DATA_PATH}",target="/input" \
     --mount type=bind,source="${CACHE_PATH}",target="/home/user/.cache/pkm" \
