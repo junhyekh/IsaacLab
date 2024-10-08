@@ -3,20 +3,20 @@ import json
 import math
 import numpy as np
 from typing import Dict, Optional
-from custom_env.scene.object_set import ObjectSet
+from pkm.scene.object_set import ObjectSet
 import os
 import shutil
 from dataclasses import dataclass
 from typing import Tuple
 import trimesh
 from tempfile import mkdtemp
-from custom_env.util.torch_util import dcn
+from pkm.util.torch_util import dcn
 from tqdm.auto import tqdm
 from pathlib import Path
-from custom_env.util.math_util import quat_rotate
-from custom_env.util.path import ensure_directory
+from pkm.util.math_util import quat_rotate
+from pkm.util.path import ensure_directory
 import torch as th
-from custom_env.scene.util import (
+from pkm.scene.util import (
     # stat_from_urdf,
     mesh_from_urdf,
     stat_from_mesh,

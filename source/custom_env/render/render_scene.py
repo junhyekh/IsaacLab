@@ -66,11 +66,11 @@ import omni.isaac.core.utils.prims as prim_utils
 from omni.isaac.core.prims import XFormPrimView
 from omni.isaac.lab.sensors.camera import Camera, CameraCfg
 
-from custom_env.scene.dgn_object_set import DGNObjectSet
+from pkm.scene.dgn_object_set import DGNObjectSet
 from omni.kit.viewport.utility import get_active_viewport, capture_viewport_to_file
 
 import cv2
-from custom_env.util.path import ensure_directory
+from pkm.util.path import ensure_directory
 
 def _list2str(d):
     return ' '.join(['{x:.03f}'.format(x=float(x)) for x in d])

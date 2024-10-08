@@ -5,7 +5,7 @@ from setuptools import setup
 
 
 if __name__ == '__main__':
-    setup(name='custom_env',
+    setup(name='pkm',
           use_scm_version=dict(
               root='..',
               relative_to=__file__,

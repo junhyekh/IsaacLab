@@ -63,12 +63,12 @@ from omni.isaac.lab.sensors.camera import Camera, CameraCfg
 import omni.physics.tensors.impl.api as physx
 
 
-from custom_env.scene.dgn_object_set import DGNObjectSet
+from pkm.scene.dgn_object_set import DGNObjectSet
 from omni.kit.viewport.utility import get_active_viewport, capture_viewport_to_file
 
 import cv2
-from custom_env.util.path import ensure_directory
-from custom_env.scene.util import _list2str, multi_box_link
+from pkm.util.path import ensure_directory
+from pkm.scene.util import _list2str, multi_box_link
 
 @configclass
 class SceneGeneraterCfg(DirectRLEnvCfg):

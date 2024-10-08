@@ -17,8 +17,8 @@ from pathlib import Path
 import gdown
 from cho_util.math import transform as tx
 from yourdfpy import URDF
-from custom_env.util.torch_util import dcn
-from custom_env.util.math_util import matrix_from_pose
+from pkm.util.torch_util import dcn
+from pkm.util.math_util import matrix_from_pose
 
 import pyglet
 from icecream import ic

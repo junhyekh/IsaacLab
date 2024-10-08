@@ -22,8 +22,8 @@ from pathlib import Path
 from tqdm.auto import tqdm
 import numpy as np
 
-from custom_env.util.path import ensure_directory
-from custom_env.scene.dgn_object_set import DGNObjectSet
+from pkm.util.path import ensure_directory
+from pkm.scene.dgn_object_set import DGNObjectSet
 
 def _convert_usd(urdf: str, out_path: str):
     out_path = Path(out_path)

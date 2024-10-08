@@ -41,7 +41,7 @@ from omni.isaac.lab.utils.assets import ISAAC_NUCLEUS_DIR
 from omni.isaac.lab.utils.math import sample_uniform, matrix_from_quat, euler_xyz_from_quat
 from omni.isaac.lab.sim.converters import UrdfConverterCfg, UrdfConverter
 import omni.isaac.core.utils.prims as prim_utils
-from custom_env.scene.dgn_object_set import DGNObjectSet
+from pkm.scene.dgn_object_set import DGNObjectSet
 def _list2str(d):
     return ' '.join(['{x:.03f}'.format(x=float(x)) for x in d])
 
