@@ -10,7 +10,7 @@ cmdclass = { }
 
 
 if __name__ == '__main__':
-    setup(name='dc',
+    setup(name='domi',
           use_scm_version=dict(
               root='../../',
               relative_to=__file__,
