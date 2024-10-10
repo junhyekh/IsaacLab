@@ -65,3 +65,39 @@ def matrix_from_pose(p: th.Tensor, q: th.Tensor,
                        device=p.device)
     _matrix_from_pose(p, q, out)
     return out
+
+
+
+# TODO(ycho): --> pkm_util
+def xyzw2wxyz(q_xyzw: th.Tensor, dim: int = -1):
+    return th.roll(q_xyzw, 1, dims=dim)
+
+
+def wxyz2xyzw(q_wxyz: th.Tensor, dim: int = -1):
+    return th.roll(q_wxyz, -1, dims=dim)
+
+
+def align_vectors(a: th.Tensor, b: th.Tensor, eps: float = 0.00001):
+    """
+    Return q: rotate(q, a) == b
+    """
+    dot = th.einsum('...j, ...j->...', a, b)
+    parallel = (dot > (1 - eps))
+    opposite = (dot < (-1 + eps))
+
+    cross = th.cross(a, b, dim=-1)
+    # sin(\theta) = 2 sin(0.5*theta) cos(0.5*theta)
+    # 1 + cos(\theta) # = 2 cos^2(0.5*theta)
+    out = th.cat([cross, (1 + dot)[..., None]], dim=-1)
+    # FIXME(ycho): 1e-6 seems quite arbitrary
+    out /= (1e-6 + out.norm(p=2, dim=-1, keepdim=True))
+
+    # Handle aligned cases.
+    out[parallel] = th.as_tensor((0, 0, 0, 1),
+                                 dtype=out.dtype,
+                                 device=out.device)
+    out[opposite] = th.as_tensor((1, 0, 0, 0),
+                                 dtype=out.dtype,
+                                 device=out.device)
+
+    return out
