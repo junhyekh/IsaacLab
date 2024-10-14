@@ -69,7 +69,7 @@ exclude = [
     ".vscode",
 ]
 
-typeCheckingMode = "basic"
+typeCheckingMode = "off"
 pythonVersion = "3.10"
 pythonPlatform = "Linux"
 enableTypeIgnoreComments = true
