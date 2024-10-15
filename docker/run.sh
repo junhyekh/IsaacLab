@@ -4,12 +4,11 @@ set -exu
 
 CACHE_PATH="/home/${USER}/.cache/pkm"
 # DATA_PATH="/path/to/data/"
-# DATA_PATH="/home/jh/workspace/data/pkm"
-DATA_PATH="/opt/data/isaaclab"
+DATA_PATH="/home/jh/workspace/data/pkm"
 
 # replace /tmp/docker
 # SHARE_PATH="/path/to/share/"
-SHARE_PATH="/home/ytcho/workspace/isaaclab/gate"
+SHARE_PATH="/home/jh/workspace/isaaclab/gate"
 
 # x11 authority
 __ISAACLAB_TMP_XAUTH=$(mktemp --suffix=".xauth")
