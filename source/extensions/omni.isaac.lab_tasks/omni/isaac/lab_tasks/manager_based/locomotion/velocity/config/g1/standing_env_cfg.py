@@ -28,6 +28,7 @@ from omni.isaac.lab.managers import CommandTermCfg, CommandTerm
 from omni.isaac.lab.scene import InteractiveSceneCfg
 from omni.isaac.lab.sensors import ContactSensorCfg
 from omni.isaac.lab.terrains import TerrainImporterCfg
+import omni.isaac.lab.utils.math as math_utils
 from omni.isaac.lab.utils import configclass
 from omni.isaac.lab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from omni.isaac.lab.utils.noise import AdditiveUniformNoiseCfg as Unoise
