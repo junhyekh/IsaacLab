@@ -35,6 +35,7 @@ from omni.isaac.lab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 from omni.isaac.lab.markers import VisualizationMarkers, VisualizationMarkersCfg
 from omni.isaac.lab.markers.config import FRAME_MARKER_CFG
 from omni.isaac.lab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
+from icecream import ic
 
 import domi.env.help.zmp as zmp
 from domi.sim.contact_sensor_extra_cfg import ContactSensorExtraCfg
