@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
+from icecream import ic
 import torch
 import torch as th
 
@@ -57,12 +58,15 @@ class ContactSensorExtra(ContactSensor):
         super()._initialize_impl()
 
         c: int = self.cfg.max_contact_data_count
-        self._data.c_force = th.zeros(c, 3, device=self._device)
+        # NOTE(ytcho): it returns normal forces, dimension should be 1
+        self._data.c_force = th.zeros(c, 1, device=self._device)
         self._data.c_point = th.zeros(c, 3, device=self._device)
         self._data.c_normal = th.zeros(c, 3, device=self._device)
         self._data.c_dist = th.zeros(c, 1, device=self._device)
         self._data.c_env = th.zeros(c, dtype=th.long, device=self._device)
-
+        
+        if self._num_envs != self.num_instances:
+            raise ValueError("There should be one contact sensor per env")
         n: int = self._num_envs
         m: int = self.contact_physx_view.filter_count
         self._data.c_num = th.zeros(n, m, dtype=th.long, device=self._device)
@@ -111,9 +115,13 @@ class ContactSensorExtra(ContactSensor):
             self._data.c_num[...] = num
             self._data.c_idx[...] = idx
             self._data.c_env[:count] = th.repeat_interleave(
-                th.arange(self._num_envs,
-                          dtype=th.long,
-                          device=self._device),
+            # NOTE(ytcho): env indices should be repeated as the
+            # number of the filter counts
+                th.repeat_interleave(
+                    th.arange(self._num_envs, 
+                              dtype=th.long, 
+                              device=self._device),
+                    self.contact_physx_view.filter_count),
                 num.reshape(-1),
                 dim=-1,
                 output_size=count)
@@ -137,25 +145,38 @@ class ContactSensorExtra(ContactSensor):
                 self.contact_visualizer_2.set_visibility(False)
 
     def _debug_vis_callback(self, event):
-        super()._debug_vis_callback(event)
+        # NOTE(ytcho): Disabled due to warning messages
+        # super()._debug_vis_callback(event)
 
         # Marked with presence of contact
-        c_has = (self._data.c_env >= 0)
+        c_has = (self._data.c_env >= 0) & (self._data.c_force.squeeze() > self.cfg.visualize_threshold)
         point = self._data.c_point[c_has]
 
-        x = th.zeros_like(self._data.c_normal[c_has])
-        x[..., 0] = 1
-        quat_xyzw = align_vectors(x, self._data.c_normal[c_has]).view(-1, 4)
+        if torch.any(c_has):
+            x = th.zeros_like(self._data.c_normal[c_has])
+            x[..., 0] = 1
+            quat_xyzw = align_vectors(x, self._data.c_normal[c_has]).view(-1, 4)
 
-        # FIXME(ycho): might not be the best visualization
-        arrow_scale = th.tensor(
-            [1.0, 0.01, 0.01],
-            device=self.device).repeat(
-            quat_xyzw.shape[0],
-            1) * 6
+            # FIXME(ycho): might not be the best visualization
+            arrow_scale = th.tensor(
+                [1.0, 0.01, 0.01],
+                device=self.device).repeat(
+                quat_xyzw.shape[0],
+                1) * 6
+            self.contact_visualizer_2.visualize(
+                point.view(-1, 3),
+                xyzw2wxyz(quat_xyzw),
+                arrow_scale
+            )
 
-        self.contact_visualizer_2.visualize(
-            point.view(-1, 3),
-            xyzw2wxyz(quat_xyzw),
-            arrow_scale
-        )
+    def _update_outdated_buffers(self):
+        '''
+        Since the _update_outdated_buffers defined in the
+        class SensorBase updates for the buffer only for the 
+        outdated envs, we override that method by refreshing
+        the buffer across all the envs
+        '''
+        env_ids = th.arange(self._num_envs, 
+                            dtype=th.long, 
+                            device=self._device)
+        self._update_buffers_impl(env_ids)

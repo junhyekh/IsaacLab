@@ -31,3 +31,6 @@ class ContactSensorExtraCfg(ContactSensorCfg):
 
     visualizer_cfg_2: VisualizationMarkersCfg = CONTACT_SENSOR_MARKER_CFG_2.replace(
         prim_path="/Visuals/ContactSensor_2")
+    
+    # Force threshold to visualize
+    visualize_threshold: float = 0.1

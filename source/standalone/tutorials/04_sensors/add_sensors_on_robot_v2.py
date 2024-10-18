@@ -24,6 +24,7 @@ We add the following sensors on the quadruped robot, ANYmal-C (ANYbotics):
 import argparse
 
 from omni.isaac.lab.app import AppLauncher
+from icecream import ic
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Tutorial on adding sensors on a robot.")
@@ -72,19 +73,6 @@ class SensorsSceneCfg(InteractiveSceneCfg):
 
     # robot
     robot: ArticulationCfg = ANYMAL_C_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
-    rigid_obj = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/RigidObj",
-        spawn=sim_utils.CuboidCfg(
-            size=(16.0, 16.0, 0.1),
-            activate_contact_sensors=True,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                disable_gravity=False,
-            ),
-            collision_props=sim_utils.CollisionPropertiesCfg(
-                collision_enabled=True,
-            ),
-        ),
-    )
 
     # sensors
     camera = CameraCfg(
@@ -107,9 +95,20 @@ class SensorsSceneCfg(InteractiveSceneCfg):
         debug_vis=True,
         mesh_prim_paths=["/World/defaultGroundPlane"],
     )
-    contact_forces = ContactSensorExtraCfg(
-        prim_path="{ENV_REGEX_NS}/RigidObj",
-        filter_prim_paths_expr=["{ENV_REGEX_NS}/Robot/.*RH_FOOT"],
+    # NOTE(ytcho): you should add suffix "GroundPlane/CollisionPlane" for the
+    # prim_path for the ground plane
+    contact_forces_LH = ContactSensorExtraCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/.*LH_FOOT",
+        filter_prim_paths_expr=["/World/defaultGroundPlane/GroundPlane/CollisionPlane"],
+        update_period=0.0,
+        history_length=6,
+        debug_vis=True,
+        max_contact_data_count=64
+    )
+
+    contact_forces_RH = ContactSensorExtraCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/.*RH_FOOT",
+        filter_prim_paths_expr=["/World/defaultGroundPlane/GroundPlane/CollisionPlane"],
         update_period=0.0,
         history_length=6,
         debug_vis=True,
@@ -170,9 +169,16 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
         print("-------------------------------")
         print(scene["height_scanner"])
         print("Received max height value: ", torch.max(scene["height_scanner"].data.ray_hits_w[..., -1]).item())
-        print("-------------------------------")
-        print(scene["contact_forces"])
-        print("Received max contact force of: ", torch.max(scene["contact_forces"].data.net_forces_w).item())
+        ic(
+            scene["contact_forces_LH"].data.c_force[:2], 
+            scene["contact_forces_LH"].data.c_num, 
+            scene["contact_forces_LH"].data.c_env[:2],
+            scene["contact_forces_LH"].data.c_idx)
+        ic(
+            scene["contact_forces_RH"].data.c_force[:2], 
+            scene["contact_forces_RH"].data.c_num, 
+            scene["contact_forces_RH"].data.c_env[:2],
+            scene["contact_forces_RH"].data.c_idx)
 
 
 def main():
