@@ -27,16 +27,13 @@ from omni.isaac.lab.managers import TerminationTermCfg as DoneTerm
 from omni.isaac.lab.managers import CommandTermCfg, CommandTerm
 from omni.isaac.lab.scene import InteractiveSceneCfg
 from omni.isaac.lab.sensors import ContactSensorCfg
-from domi.sim.contact_sensor_extra import ContactSensorExtra, ContactSensorExtraData
 from omni.isaac.lab.terrains import TerrainImporterCfg
-import omni.isaac.lab.utils.math as math_utils
 from omni.isaac.lab.utils import configclass
 from omni.isaac.lab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from omni.isaac.lab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 from omni.isaac.lab.markers import VisualizationMarkers, VisualizationMarkersCfg
 from omni.isaac.lab.markers.config import FRAME_MARKER_CFG
 from omni.isaac.lab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
-from icecream import ic
 
 import domi.env.help.zmp as zmp
 from domi.sim.contact_sensor_extra_cfg import ContactSensorExtraCfg
