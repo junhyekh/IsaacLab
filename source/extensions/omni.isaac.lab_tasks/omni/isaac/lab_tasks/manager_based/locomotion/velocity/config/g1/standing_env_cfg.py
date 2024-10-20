@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import math
+import numpy as np
 import torch as th
 from dataclasses import MISSING
 from typing import TYPE_CHECKING, List
@@ -245,6 +246,55 @@ def ang_momentum(
 
     return rew
 
+def foot_pose_in_robot_root_frame(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    left_foot_cfg: SceneEntityCfg = SceneEntityCfg("robot", body_names="left_ankle_roll_link"),
+    right_foot_cfg: SceneEntityCfg = SceneEntityCfg("robot", body_names="right_ankle_roll_link"),
+) -> th.Tensor:
+    """The position of the object in the robot's root frame."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    left_foot_ids = asset.find_bodies(left_foot_cfg.body_names)[0][0]
+    right_foot_ids = asset.find_bodies(right_foot_cfg.body_names)[0][0]
+    foot_pos_left_b, foot_quat_left_b = math_utils.subtract_frame_transforms(
+        asset.data.root_pos_w,
+        asset.data.root_quat_w,
+        asset.data.body_state_w[:, left_foot_ids, :3],
+        asset.data.body_state_w[:, left_foot_ids, 3:7],
+    )
+    foot_pos_right_b, foot_quat_right_b = math_utils.subtract_frame_transforms(
+        asset.data.root_pos_w,
+        asset.data.root_quat_w,
+        asset.data.body_state_w[:, right_foot_ids, :3],
+        asset.data.body_state_w[:, right_foot_ids, 3:7],
+    )
+    foot_axa_left_b = math_utils.wrap_to_pi(
+        math_utils.axis_angle_from_quat(foot_quat_left_b))
+    foot_axa_right_b = math_utils.wrap_to_pi(
+        math_utils.axis_angle_from_quat(foot_quat_right_b))
+    
+    foot_pose_b = th.cat(
+        (foot_pos_left_b, foot_pos_right_b, foot_axa_left_b, foot_axa_right_b),
+        dim=-1)
+    
+    return foot_pose_b
+
+def position_command_error(
+        env: ManagerBasedRLEnv, 
+        command_name: str) -> th.Tensor:
+    # extract the asset (to enable type hinting)
+    command = env.command_manager.get_command(command_name)
+    pos_error = command[..., :6].norm(dim=-1)
+    return pos_error
+
+def orientation_command_error(
+        env: ManagerBasedRLEnv, 
+        command_name: str) -> th.Tensor:
+    # extract the asset (to enable type hinting)
+    command = env.command_manager.get_command(command_name)
+    ori_error = command[..., 6:12].norm(dim=-1)
+    return ori_error
+
 # End of helper functions
 
 
@@ -306,6 +356,7 @@ class ObservationsCfg:
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity,
         )
+        foot_pose = ObsTerm(func=foot_pose_in_robot_root_frame)
         projected_com = ObsTerm(
             func=projected_coms,
             params={
@@ -323,6 +374,8 @@ class ObservationsCfg:
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
         actions = ObsTerm(func=mdp.last_action)
+        hands_command= ObsTerm(func=mdp.generated_commands, params={"command_name": "hands_pose"})
+
 
         def __post_init__(self):
             self.enable_corruption = False
@@ -409,7 +462,8 @@ class EventCfg:
 @configclass
 class G1Rewards:
     """Reward terms for the MDP."""
-    alive = RewTerm(func=mdp.is_alive, weight=1.0)
+    # alive = RewTerm(func=mdp.is_alive, weight=1.0)
+    alive = RewTerm(func=mdp.is_alive, weight=2.0)
     # -- task
     dof_torques_l2 = RewTerm(
         func=mdp.joint_torques_l2, 
@@ -422,8 +476,9 @@ class G1Rewards:
     )
     energy = RewTerm(
         func=energy,
-        weight=-0.002
+        # weight=-0.002
         # weight=-0.001
+        weight=-0.0002
     )
     dof_acc_l2 = RewTerm(
         func=mdp.joint_acc_l2, 
@@ -435,6 +490,7 @@ class G1Rewards:
     zmp_supp_dist = RewTerm(
         func=zmp_supp_dist,
         weight=0.3,
+        # weight=0.1,
         # weight=0,
         params={
             "sigma": 10,
@@ -443,8 +499,8 @@ class G1Rewards:
     )
     zmp_centroid_dist = RewTerm(
         func=zmp_centroid_dist,
-        weight=0.5,
-        # weight=0.,
+        # weight=0.5,
+        weight=0.,
         params={
             "sigma": 30,
             "asset_cfg": SceneEntityCfg("robot"),
@@ -463,6 +519,18 @@ class G1Rewards:
             "sigma_2": 4,
             "asset_cfg": SceneEntityCfg("robot"),
         },
+    )
+    # Tracking rewards
+    hand_pos_tracking = RewTerm(
+        func=position_command_error,
+        weight=-1,
+        params={"command_name": "hands_pose"},
+    )
+    hand_ori_tracking = RewTerm(
+        func=orientation_command_error,
+        # weight=-0.2,
+        weight=-0.5,
+        params={"command_name": "hands_pose"},
     )
 
 
@@ -596,6 +664,32 @@ G1_CFG = ArticulationCfg(
     },
 )
 
+
+
+@configclass
+class CommandsCfg:
+    hands_pose = mdp.HumanoidPoseCommandCfg(
+        class_type=mdp.HumanoidPoseCommand,
+        asset_name="robot",
+        resampling_time_range=(3.0, 3.0),
+        left_hand_body_name="left_palm_link",
+        right_hand_body_name="right_palm_link",
+        debug_vis=True,
+        ranges=mdp.HumanoidPoseCommandCfg.Ranges(
+            # r_range=(0.4, 0.6),
+            # r_range=(0.25, 0.55),
+            r_range=(0.3, 0.55),
+            theta_range=(-np.pi/4, np.pi/4),
+            # z_range=(0.25, 1.0),
+            z_range=(0.3, 1.2),
+        ),
+        hand_shift=0.15,
+        delta_yaw=30.
+
+    )
+
+
+
 @configclass
 class G1StandingEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the locomotion velocity-tracking environment."""
@@ -605,6 +699,7 @@ class G1StandingEnvCfg(ManagerBasedRLEnvCfg):
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
+    commands: CommandsCfg = CommandsCfg()
     # commands: CommandsCfg = CommandsCfg()
     # MDP settings
     events: EventCfg = EventCfg()
@@ -618,7 +713,8 @@ class G1StandingEnvCfg(ManagerBasedRLEnvCfg):
         """Post initialization."""
         # general settings
         self.decimation = 4
-        self.episode_length_s = 10.
+        # self.episode_length_s = 10.
+        self.episode_length_s = 15
         # simulation settings
         self.sim.dt = 0.005
         self.sim.render_interval = self.decimation
@@ -636,7 +732,7 @@ class G1StandingEnvCfg(ManagerBasedRLEnvCfg):
             )
 
         # Randomization
-        # self.events.push_robot = None
+        self.events.push_robot = None
         self.events.add_base_mass = None
         self.events.base_external_force_torque = None
         self.events.reset_base.params = {
