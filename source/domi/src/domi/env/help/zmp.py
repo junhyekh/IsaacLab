@@ -170,7 +170,9 @@ def compute_zmp(
 
 def compute_2d_convex_hull(
         p_points: th.Tensor, 
-        p_mask: th.Tensor) -> th.Tensor:
+        p_mask: th.Tensor,
+        eps:float = 1e-6
+        ) -> th.Tensor:
     """
     Computes 2d convex hull given batched points.
     Uses Gift wrapping algorith.: https://en.wikipedia.org/wiki/Gift_wrapping_algorith.
@@ -178,6 +180,7 @@ def compute_2d_convex_hull(
     Args:
         p_points: th.Tensor [N, M, 2]
         p_mask: th.Tensor [N, M]
+        epsilon: float -> threshold for filtering duplicated points
 
     Returns:
         hull_points: th.Tensor [N, M, 2] -> convex hull nodes, will be Nan
@@ -188,6 +191,20 @@ def compute_2d_convex_hull(
     if P != 2:
         raise ValueError("Must be 2d points")
     hull_indices = th.full((N, M), -1, dtype=th.long, device=p_points.device)
+
+    # NOTE(ytcho): Since the PhysX gives **identical contact points**,
+    # We must filter the duplicated points
+    sorted_x = th.argsort(p_points[:, :, 0], dim=1)
+    sorted_points = th.gather(p_points, 1, sorted_x[..., None].expand_as(p_points))
+    
+    diffs_norm = th.norm(th.diff(sorted_points, dim=1), dim=2)
+    
+    unique_mask_s = th.ones_like(p_mask)
+    unique_mask_s[:, 1:] = diffs_norm > eps
+    
+    unique_mask = th.zeros_like(unique_mask_s)
+    unique_mask.scatter_(1, sorted_x, unique_mask_s)
+    p_mask &= unique_mask
 
     px = p_points[..., 0].clone()  # [N, M]
     px[~p_mask] = float('inf')

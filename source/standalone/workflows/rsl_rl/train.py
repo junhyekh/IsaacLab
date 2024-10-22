@@ -92,9 +92,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     log_root_path = os.path.abspath(log_root_path)
     print(f"[INFO] Logging experiment in directory: {log_root_path}")
     # specify directory for logging runs: {time-stamp}_{run_name}
-    log_dir = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    if agent_cfg.run_name:
-        log_dir += f"_{agent_cfg.run_name}"
+    if agent_cfg.run_name is None:
+        log_dir = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    else:
+        log_dir = f"{agent_cfg.run_name}"
     log_dir = os.path.join(log_root_path, log_dir)
 
     # create isaac environment

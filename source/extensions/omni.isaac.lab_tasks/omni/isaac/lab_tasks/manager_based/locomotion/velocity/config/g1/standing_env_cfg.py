@@ -122,6 +122,13 @@ def zmp_supp_dist(
     )
     rew = (th.exp(sigma * -th.clip(signed_zmp_dist, max=0))-1)
 
+    if "ZMP_margin" not in env.reward_manager.episode_stat_sums.keys():
+        env.reward_manager.episode_stat_sums["ZMP_margin"] = \
+            th.zeros(env.num_envs, dtype=th.float, device=env.device)
+
+    env.reward_manager.episode_stat_sums["ZMP_margin"] += \
+        -th.clip(signed_zmp_dist, max=0)
+
     # Code for COM, ZMP visualization
     if not hasattr(env, "com_markers"):
         com_markers_cfg= VisualizationMarkersCfg(
@@ -170,9 +177,47 @@ def zmp_centroid_dist(
     dist_l2 = th.sum(th.square(centroid-asset.data.zmp_pos_w[..., :2]), dim=1)
     norm_dist_l2 = dist_l2 / area
 
+    if "ZMP_centroid_dist" not in env.reward_manager.episode_stat_sums.keys():
+        env.reward_manager.episode_stat_sums["ZMP_centroid_dist"] = \
+            th.zeros(env.num_envs, dtype=th.float, device=env.device)
+        env.reward_manager.episode_stat_sums["Supp_area"] = \
+            th.zeros(env.num_envs, dtype=th.float, device=env.device)
+
+    env.reward_manager.episode_stat_sums["ZMP_centroid_dist"] += th.where(
+        area > area_thresh, 
+        dist_l2 ** 0.5, 
+        th.zeros_like(area))
+    env.reward_manager.episode_stat_sums["Supp_area"] += area
+
     rew = th.where(
         area > area_thresh, 
         th.exp(-sigma * norm_dist_l2), 
+        th.zeros_like(area))
+    
+    return rew
+
+def zmp_centroid_dist_v2(
+        env: ManagerBasedRLEnv, 
+        sigma: float,
+        asset_cfg: SceneEntityCfg,
+        area_thresh: float = 1e-4
+    ) -> th.Tensor:
+    """
+    Computes the distance/margin between the support polygon and the zmp
+    Rewards based on the direct distance
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+
+    centroid, area = zmp.compute_2d_hull_centroid(
+        asset.data.hull_points, 
+        asset.data.hull_idx
+    )
+    # Squared distance between the zmp and the support polygon centroid
+    dist_l2 = th.sum(th.square(centroid-asset.data.zmp_pos_w[..., :2]), dim=1)
+    
+    rew = th.where(
+        area > area_thresh, 
+        th.exp(-sigma * (dist_l2 ** 0.5)), 
         th.zeros_like(area))
     
     return rew
@@ -193,6 +238,18 @@ def com_supp_dist(
         asset.data.hull_idx, 
         asset.data.com_pos_w[..., :2]
     )
+
+    if "COM_margin" not in env.reward_manager.episode_stat_sums.keys():
+        env.reward_manager.episode_stat_sums["COM_margin"] = \
+            th.zeros(env.num_envs, dtype=th.float, device=env.device)
+        env.reward_manager.episode_stat_sums["COM_dist"] = \
+            th.zeros(env.num_envs, dtype=th.float, device=env.device)
+
+    env.reward_manager.episode_stat_sums["COM_margin"] += \
+        -th.clip(singed_com_dist, max=0)
+    env.reward_manager.episode_stat_sums["COM_dist"] += \
+        th.clip(singed_com_dist, min=0)
+
     rew = th.exp(sigma_1 * -th.clip(singed_com_dist, max=0)) - \
           th.exp(sigma_2 * th.clip(singed_com_dist, min=0))
 
@@ -205,6 +262,13 @@ def energy(
     asset: Articulation = env.scene[asset_cfg.name]
 
     energy = th.clip(asset.data.joint_vel * asset.data.applied_torque, min=0)
+
+    if "Energy" not in env.reward_manager.episode_stat_sums.keys():
+        env.reward_manager.episode_stat_sums["Energy"] = \
+            th.zeros(env.num_envs, dtype=th.float, device=env.device)
+
+    env.reward_manager.episode_stat_sums["Energy"] += th.sum(energy, dim=-1)
+
     return th.sum(energy, dim=-1)
 
 def bad_ori(
@@ -239,7 +303,14 @@ def ang_momentum(
 
     lin_mom, ang_mom = zmp.compute_lin_ang_momentum(
         asset, asset.data.com_pos_w)
-    
+
+    if "Ang_momentum_abs" not in env.reward_manager.episode_stat_sums.keys():
+        env.reward_manager.episode_stat_sums["Ang_momentum_abs"] = \
+            th.zeros(env.num_envs, dtype=th.float, device=env.device)
+
+    env.reward_manager.episode_stat_sums["Ang_momentum_abs"] += \
+        th.sum(th.abs(ang_mom), dim= -1)
+
     # NOTE(ytcho): Hardcoded 
     ang_mom_l2 = th.sum(th.square(ang_mom), dim= -1).clip(min=0, max=1.0)
     rew = (th.exp(ang_mom_l2)-1) * (env.episode_length_buf > 30).float()
@@ -285,6 +356,18 @@ def position_command_error(
     # extract the asset (to enable type hinting)
     command = env.command_manager.get_command(command_name)
     pos_error = command[..., :6].norm(dim=-1)
+
+    if "Left_hand_target_dist" not in env.reward_manager.episode_stat_sums.keys():
+        env.reward_manager.episode_stat_sums["Left_hand_target_dist"] = \
+            th.zeros(env.num_envs, dtype=th.float, device=env.device)
+        env.reward_manager.episode_stat_sums["Right_hand_target_dist"] = \
+            th.zeros(env.num_envs, dtype=th.float, device=env.device)
+
+    env.reward_manager.episode_stat_sums["Left_hand_target_dist"] += \
+        command[..., :3].norm(dim=-1)
+    env.reward_manager.episode_stat_sums["Right_hand_target_dist"] += \
+        command[..., 3:6].norm(dim=-1)
+
     return pos_error
 
 def orientation_command_error(
@@ -293,6 +376,18 @@ def orientation_command_error(
     # extract the asset (to enable type hinting)
     command = env.command_manager.get_command(command_name)
     ori_error = command[..., 6:12].norm(dim=-1)
+
+    if "Left_hand_target_ori" not in env.reward_manager.episode_stat_sums.keys():
+        env.reward_manager.episode_stat_sums["Left_hand_target_ori"] = \
+            th.zeros(env.num_envs, dtype=th.float, device=env.device)
+        env.reward_manager.episode_stat_sums["Right_hand_target_ori"] = \
+            th.zeros(env.num_envs, dtype=th.float, device=env.device)
+
+    env.reward_manager.episode_stat_sums["Left_hand_target_ori"] += \
+        command[..., 6:9].norm(dim=-1)
+    env.reward_manager.episode_stat_sums["Right_hand_target_ori"] += \
+        command[..., 9:12].norm(dim=-1)
+
     return ori_error
 
 # End of helper functions
@@ -489,9 +584,9 @@ class G1Rewards:
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-20.0)
     zmp_supp_dist = RewTerm(
         func=zmp_supp_dist,
-        weight=0.3,
+        # weight=0.3,
         # weight=0.1,
-        # weight=0,
+        weight=0.,
         params={
             "sigma": 10,
             "asset_cfg": SceneEntityCfg("robot"),
@@ -499,6 +594,15 @@ class G1Rewards:
     )
     zmp_centroid_dist = RewTerm(
         func=zmp_centroid_dist,
+        # weight=0.5,
+        weight=0.,
+        params={
+            "sigma": 30,
+            "asset_cfg": SceneEntityCfg("robot"),
+        },
+    )
+    zmp_centroid_dist_v2 = RewTerm(
+        func=zmp_centroid_dist_v2,
         # weight=0.5,
         weight=0.,
         params={
