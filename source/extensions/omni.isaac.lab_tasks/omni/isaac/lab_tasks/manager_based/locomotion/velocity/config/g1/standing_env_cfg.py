@@ -772,14 +772,14 @@ G1_CFG = ArticulationCfg(
 
 @configclass
 class CommandsCfg:
-    hands_pose = mdp.HumanoidPoseCommandCfg(
-        class_type=mdp.HumanoidPoseCommand,
+    hands_pose = mdp.LocalHandPoseCommandCfg(
+        class_type=mdp.LocalHandPoseCommand,
         asset_name="robot",
         resampling_time_range=(3.0, 3.0),
         left_hand_body_name="left_palm_link",
         right_hand_body_name="right_palm_link",
         debug_vis=True,
-        ranges=mdp.HumanoidPoseCommandCfg.Ranges(
+        ranges=mdp.LocalHandPoseCommandCfg.Ranges(
             # r_range=(0.4, 0.6),
             # r_range=(0.25, 0.55),
             r_range=(0.3, 0.55),
