@@ -26,6 +26,7 @@ from omni.isaac.lab.managers import RewardTermCfg as RewTerm
 from omni.isaac.lab.managers import SceneEntityCfg
 from omni.isaac.lab.managers import TerminationTermCfg as DoneTerm
 from omni.isaac.lab.managers import CommandTermCfg, CommandTerm
+from omni.isaac.lab.sensors import ContactSensor
 from omni.isaac.lab.scene import InteractiveSceneCfg
 from omni.isaac.lab.sensors import ContactSensorCfg
 from omni.isaac.lab.terrains import TerrainImporterCfg
@@ -155,6 +156,32 @@ def zmp_supp_dist(
     proj_com[..., :2] = asset.data.com_pos_w[..., :2]
     env.com_markers.visualize(proj_com)
     env.zmp_markers.visualize(asset.data.zmp_pos_w)
+
+    return rew
+
+def zmp_supp_dist_v2(
+        env: ManagerBasedRLEnv, 
+        command_name: str,
+        close_threshold: str,
+        sigma: float,
+        asset_cfg: SceneEntityCfg,
+    ) -> th.Tensor:
+    # """
+    # Computes the distance/margin between the support polygon and the zmp
+    # """
+    asset: Articulation = env.scene[asset_cfg.name]
+
+    signed_zmp_dist = zmp.hull_point_signed_dist(
+        asset.data.hull_points, 
+        asset.data.hull_idx, 
+        asset.data.zmp_pos_w[..., :2]
+    )
+    rew = (th.exp(sigma * -th.clip(signed_zmp_dist, max=0))-1)
+
+    command = env.command_manager.get_command(command_name)
+    pos_delta_base = command[..., 6:9].norm(dim=-1)
+    rew = th.where(pos_delta_base < close_threshold,
+        rew, th.zeros_like(rew))
 
     return rew
 
@@ -390,6 +417,175 @@ def orientation_command_error(
 
     return ori_error
 
+def walk_to_target(
+        env: ManagerBasedRLEnv, 
+        command_name: str,
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+        target_vel_x: float = 1.0,
+        target_vel_y: float = 0.,
+        close_threshold: float = 0.5,
+        c1: float = 0.4,
+        c2: float = 0.4,
+        c3: float = 0.2,
+        eps: float = 1e-6
+        ) -> th.Tensor:
+    # extract the asset (to enable type hinting)
+    asset: Articulation = env.scene[asset_cfg.name]
+    command_term: mdp.GlobalPoseCommand = \
+        env.command_manager.get_term(command_name)
+    # Standing position target
+    target_w = command_term.standing_pose_w
+
+    # Vector from the root to the standing target
+    root_to_t = th.zeros_like(target_w[..., :3])
+    root_to_t[..., :2] = \
+        target_w[..., :2] - asset.data.root_state_w[..., :2]
+    root_to_t_norm = th.norm(root_to_t, dim=-1, keepdim=True)
+    root_to_t_norm[root_to_t_norm == 0] = eps
+    root_to_t_normalized = root_to_t / root_to_t_norm
+
+    target_vel = th.zeros_like(target_w)
+    target_vel[..., 0] = target_vel_x
+    target_vel[..., 1] = target_vel_y
+
+    root_vel_yaw_b = math_utils.quat_rotate_inverse(
+        math_utils.yaw_quat(asset.data.root_quat_w),
+        asset.data.root_lin_vel_w[..., :3])
+    root_to_t_normalized_b = math_utils.quat_rotate_inverse(
+        math_utils.yaw_quat(asset.data.root_quat_w),
+        root_to_t_normalized)
+    
+    rew1 = th.exp(-0.5 * th.sum(th.square(root_to_t), dim=-1))
+    rew2 = th.exp(-2.0 * th.sum(
+        th.square(target_vel[..., :2] - root_vel_yaw_b[..., :2]), 
+        dim=-1))
+    rew3 = th.square(root_to_t_normalized_b[..., 1].clip(min=0))
+
+    rew = th.where(
+        root_to_t_norm[..., 0] > close_threshold,
+        c1 * rew1 + c2 * rew2 + c3 * rew3,
+        th.ones_like(root_to_t[..., 0]))
+
+
+    if "Root_standing_dist" not in env.reward_manager.episode_stat_sums.keys():
+        env.reward_manager.episode_stat_sums["Root_standing_dist"] = \
+            th.zeros(env.num_envs, dtype=th.float, device=env.device)
+        env.reward_manager.episode_stat_sums["Walking_rew1"] = \
+            th.zeros(env.num_envs, dtype=th.float, device=env.device)
+        env.reward_manager.episode_stat_sums["Walking_rew2"] = \
+            th.zeros(env.num_envs, dtype=th.float, device=env.device)
+        env.reward_manager.episode_stat_sums["Walking_rew3"] = \
+            th.zeros(env.num_envs, dtype=th.float, device=env.device)
+
+    env.reward_manager.episode_stat_sums["Root_standing_dist"] += \
+        root_to_t_norm[..., 0]
+    env.reward_manager.episode_stat_sums["Walking_rew1"] += rew1
+    env.reward_manager.episode_stat_sums["Walking_rew2"] += rew2
+    env.reward_manager.episode_stat_sums["Walking_rew3"] += rew3
+
+
+    return rew
+
+
+def maintaining_target(
+        env: ManagerBasedRLEnv, 
+        command_name: str,
+        close_threshold: float = 0.5,
+        c_pos: float = 0.5,
+        c_ori: float = 0.25,
+        c_ori_base: float = 0.25,
+        c_pos_base: float = 0.2,
+        ) -> th.Tensor:
+
+    command = env.command_manager.get_command(command_name)
+
+    pos_delta_left = command[..., 0:3].norm(dim=-1)
+    pos_delta_right= command[..., 3:6].norm(dim=-1) 
+    pos_delta_base = command[..., 6:9].norm(dim=-1)
+    axa_delta_left = command[..., 9:12].norm(dim=-1) 
+    axa_delta_right= command[..., 12:15].norm(dim=-1)
+    axa_delta_base = command[..., 15:18].norm(dim=-1)
+
+    rew_pos = th.exp(-5 * th.square(pos_delta_left)) + \
+              th.exp(-5 * th.square(pos_delta_right))
+    rew_ori = th.exp(-5 * th.square(axa_delta_left)) + \
+              th.exp(-5 * th.square(axa_delta_right))
+    rew_ori_base = th.exp(-5 * th.square(axa_delta_base))
+    
+    rew_pos = th.where(pos_delta_base < close_threshold,
+        rew_pos, th.zeros_like(rew_pos))
+    rew_ori = th.where(pos_delta_base < close_threshold,
+        rew_ori, th.zeros_like(rew_pos))
+    rew_ori_base = th.where(pos_delta_base < close_threshold,
+        rew_ori_base, th.zeros_like(rew_pos))
+    rew_pos_base = th.where(pos_delta_base < close_threshold,
+        th.ones_like(rew_pos), th.zeros_like(rew_pos))
+    
+    if "Hand_position_rew" not in env.reward_manager.episode_stat_sums.keys():
+        env.reward_manager.episode_stat_sums["Hand_position_rew"] = \
+            th.zeros(env.num_envs, dtype=th.float, device=env.device)
+        env.reward_manager.episode_stat_sums["Hand_ori_rew"] = \
+            th.zeros(env.num_envs, dtype=th.float, device=env.device)
+        env.reward_manager.episode_stat_sums["Base_ori_rew"] = \
+            th.zeros(env.num_envs, dtype=th.float, device=env.device)
+        env.reward_manager.episode_stat_sums["Base_ori_pos"] = \
+            th.zeros(env.num_envs, dtype=th.float, device=env.device)
+
+    env.reward_manager.episode_stat_sums["Hand_position_rew"] += rew_pos
+    env.reward_manager.episode_stat_sums["Hand_ori_rew"] += rew_ori
+    env.reward_manager.episode_stat_sums["Base_ori_rew"] += rew_ori_base
+    env.reward_manager.episode_stat_sums["Base_ori_pos"] += rew_ori_base
+
+    return c_pos * rew_pos + c_ori * rew_ori + c_ori_base * rew_ori_base + c_pos_base * rew_pos_base
+
+def air_time(
+        env: ManagerBasedRLEnv, 
+        command_name: str,
+        close_threshold: float = 0.2,
+        threshold: float = 0.4,
+        sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces", body_names=".*_ankle_roll_link")
+        ) -> th.Tensor:
+
+    command = env.command_manager.get_command(command_name)
+    pos_delta_base = command[..., 6:9].norm(dim=-1)
+
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    # compute the reward
+    air_time = contact_sensor.data.current_air_time[:, sensor_cfg.body_ids]
+    contact_time = contact_sensor.data.current_contact_time[:, sensor_cfg.body_ids]
+    in_contact = contact_time > 0.0
+    in_mode_time = th.where(in_contact, contact_time, air_time)
+    single_stance = th.sum(in_contact.int(), dim=1) == 1
+    rew = th.min(th.where(single_stance.unsqueeze(-1), in_mode_time, 0.0), dim=1)[0]
+    rew = th.clamp(rew, max=threshold)
+
+    rew = th.where(pos_delta_base > close_threshold,
+        rew, th.zeros_like(rew))
+    
+    if "Air_time" not in env.reward_manager.episode_stat_sums.keys():
+        env.reward_manager.episode_stat_sums["Air_time"] = \
+            th.zeros(env.num_envs, dtype=th.float, device=env.device)
+
+    env.reward_manager.episode_stat_sums["Air_time"] += rew
+
+    return rew
+
+
+def max_consecutive_success(
+        env: ManagerBasedRLEnv, 
+        num_success: int, 
+        command_name: str) -> th.Tensor:
+    """Check if the task has been completed consecutively for a certain number of times.
+
+    Args:
+        env: The environment object.
+        num_success: Threshold for the number of consecutive successes required.
+        command_name: The command term to be used for extracting the goal.
+    """
+    command_term: mdp.GlobalPoseCommand \
+        = env.command_manager.get_term(command_name)
+
+    return command_term.metrics["consecutive_success"] >= num_success
 # End of helper functions
 
 
@@ -469,7 +665,8 @@ class ObservationsCfg:
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
         actions = ObsTerm(func=mdp.last_action)
-        hands_command= ObsTerm(func=mdp.generated_commands, params={"command_name": "hands_pose"})
+        # hands_command= ObsTerm(func=mdp.generated_commands, params={"command_name": "hands_pose"})
+        hands_command= ObsTerm(func=mdp.generated_commands, params={"command_name": "global_hand_goal"})
 
 
         def __post_init__(self):
@@ -601,15 +798,15 @@ class G1Rewards:
             "asset_cfg": SceneEntityCfg("robot"),
         },
     )
-    zmp_centroid_dist_v2 = RewTerm(
-        func=zmp_centroid_dist_v2,
-        # weight=0.5,
-        weight=0.,
-        params={
-            "sigma": 30,
-            "asset_cfg": SceneEntityCfg("robot"),
-        },
-    )
+    # zmp_centroid_dist_v2 = RewTerm(
+    #     func=zmp_centroid_dist_v2,
+    #     # weight=0.5,
+    #     weight=0.,
+    #     params={
+    #         "sigma": 30,
+    #         "asset_cfg": SceneEntityCfg("robot"),
+    #     },
+    # )
     dof_pos_limits = RewTerm(
         func=mdp.joint_pos_limits,
         weight=-1.0,
@@ -625,16 +822,70 @@ class G1Rewards:
         },
     )
     # Tracking rewards
-    hand_pos_tracking = RewTerm(
-        func=position_command_error,
-        weight=-1,
-        params={"command_name": "hands_pose"},
+    # hand_pos_tracking = RewTerm(
+    #     func=position_command_error,
+    #     weight=-1,
+    #     params={"command_name": "hands_pose"},
+    # )
+    # hand_ori_tracking = RewTerm(
+    #     func=orientation_command_error,
+    #     # weight=-0.2,
+    #     weight=-0.5,
+    #     params={"command_name": "hands_pose"},
+    # )
+    walk_to_target = RewTerm(
+        func=walk_to_target,
+        # weight=1.0,
+        # weight=0.8,
+        weight=0.8,
+        params={
+            "command_name": "global_hand_goal",
+            "asset_cfg": SceneEntityCfg("robot"),
+            "target_vel_x": 1.0,
+            "target_vel_y": 0.,
+            "close_threshold": 0.5,
+            "c1": 0.4,
+            "c2": 0.4,
+            "c3": 0.2,
+        },
     )
-    hand_ori_tracking = RewTerm(
-        func=orientation_command_error,
-        # weight=-0.2,
-        weight=-0.5,
-        params={"command_name": "hands_pose"},
+    maintaining_target = RewTerm(
+        func=maintaining_target,
+        weight=0.8,
+        params={
+            "command_name": "global_hand_goal",
+            "close_threshold": 0.5,
+            "c_pos": 0.5,
+            "c_ori": 0.25,
+            "c_ori_base": 0.25
+        }
+    )
+    air_time = RewTerm(
+        func=air_time,
+        weight=0.,
+        params={
+            "command_name": "global_hand_goal",
+            "close_threshold": 0.5,
+            "threshold": 0.2,
+        }
+    )
+    zmp_supp_dist_v2 = RewTerm(
+        func=zmp_supp_dist_v2,
+        # weight=0.3,
+        # weight=0.1,
+        weight=0.,
+        params={
+            "command_name": "global_hand_goal",
+            "close_threshold": 0.2,
+            "sigma": 10,
+            "asset_cfg": SceneEntityCfg("robot"),
+        },
+    )
+    max_consecutive_success = RewTerm(
+        func=max_consecutive_success, 
+        # weight=500.,
+        weight=1000.,
+        params={"num_success": 150, "command_name": "global_hand_goal"}
     )
 
 
@@ -659,6 +910,10 @@ class TerminationsCfg:
     bad_ori = DoneTerm(
         func=bad_ori,
         params={"limit_euler_angle": [0.5, 1.5]})
+    max_consecutive_success = DoneTerm(
+        func=max_consecutive_success, 
+        params={"num_success": 150, "command_name": "global_hand_goal"}
+    )
 
 G1_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
@@ -772,23 +1027,45 @@ G1_CFG = ArticulationCfg(
 
 @configclass
 class CommandsCfg:
-    hands_pose = mdp.LocalHandPoseCommandCfg(
-        class_type=mdp.LocalHandPoseCommand,
+    # hands_pose = mdp.LocalHandPoseCommandCfg(
+    #     class_type=mdp.LocalHandPoseCommand,
+    #     asset_name="robot",
+    #     resampling_time_range=(3.0, 3.0),
+    #     left_hand_body_name="left_palm_link",
+    #     right_hand_body_name="right_palm_link",
+    #     debug_vis=True,
+    #     ranges=mdp.LocalHandPoseCommandCfg.Ranges(
+    #         # r_range=(0.4, 0.6),
+    #         # r_range=(0.25, 0.55),
+    #         r_range=(0.3, 0.55),
+    #         theta_range=(-np.pi/4, np.pi/4),
+    #         # z_range=(0.25, 1.0),
+    #         z_range=(0.3, 1.2),
+    #     ),
+    #     hand_shift=0.15,
+    #     delta_yaw=30.
+
+    # )
+    global_hand_goal = mdp.GlobalHandPoseCommandCfg(
+        class_type=mdp.GlobalPoseCommand,
         asset_name="robot",
-        resampling_time_range=(3.0, 3.0),
+        resampling_time_range=(20., 20.),
         left_hand_body_name="left_palm_link",
         right_hand_body_name="right_palm_link",
         debug_vis=True,
-        ranges=mdp.LocalHandPoseCommandCfg.Ranges(
-            # r_range=(0.4, 0.6),
-            # r_range=(0.25, 0.55),
-            r_range=(0.3, 0.55),
-            theta_range=(-np.pi/4, np.pi/4),
-            # z_range=(0.25, 1.0),
+        ranges=mdp.GlobalHandPoseCommandCfg.Ranges(
+            x_range=(-3, 3),
+            y_range=(-3, 3),
             z_range=(0.3, 1.2),
+            yaw_range=(-2 * np.pi, 2 * np.pi),
+            # yaw_range=(0, 0),
         ),
-        hand_shift=0.15,
-        delta_yaw=30.
+        # hand_shift=0.15,
+        hand_shift=0.2,
+        # delta_yaw=30.,
+        delta_yaw=0.,
+        # standing_dist=0.5
+        standing_dist=0.4
 
     )
 
@@ -817,8 +1094,9 @@ class G1StandingEnvCfg(ManagerBasedRLEnvCfg):
         """Post initialization."""
         # general settings
         self.decimation = 4
-        # self.episode_length_s = 10.
-        self.episode_length_s = 15
+        self.episode_length_s = 10.
+        # self.episode_length_s = 3.
+        # self.episode_length_s = 8.
         # simulation settings
         self.sim.dt = 0.005
         self.sim.render_interval = self.decimation
