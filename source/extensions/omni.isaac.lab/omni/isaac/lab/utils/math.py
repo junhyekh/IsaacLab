@@ -1418,3 +1418,39 @@ def sample_cylinder(
     xyz[..., 2].uniform_(h_min, h_max)
     # return positions
     return xyz
+
+"""
+    interpolation
+"""
+
+def safe_rotvec2quat(rotvec: torch.Tensor,
+                     form: Literal["xyzw", "wxyz"] = "wxyz"):
+    angle = torch.linalg.vector_norm(rotvec, dim=1)
+    small_angle = (angle <= 1e-3)
+    large_angle = ~small_angle
+    scale = torch.empty_like(angle)
+    scale[small_angle] = (0.5 - angle[small_angle] ** 2 / 48 +
+                        angle[small_angle] ** 4 / 3840)
+    scale[large_angle] = (torch.sin(angle[large_angle] / 2) /
+                        angle[large_angle])
+    
+    xyz = scale[:, None] * rotvec
+    w = torch.cos(angle/2)[..., None]
+    if form == 'wxyz':
+        return torch.cat([w, xyz], dim=-1)
+    else:
+        return torch.cat([xyz, w], dim=-1)
+
+def slerp(q0: torch.Tensor,
+            q1: torch.Tensor,
+            steps: torch.Tensor):
+    
+    quat_diff = quat_mul(quat_conjugate(q0),
+                                    q1)
+    quat_diff = quat_unique(quat_diff)
+    rot_vec = axis_angle_from_quat(quat_diff) #(batch, 3)
+    diff = steps[..., None] * rot_vec
+    
+    diff_quat = safe_rotvec2quat(diff)
+    
+    return quat_mul(q0, diff_quat)
