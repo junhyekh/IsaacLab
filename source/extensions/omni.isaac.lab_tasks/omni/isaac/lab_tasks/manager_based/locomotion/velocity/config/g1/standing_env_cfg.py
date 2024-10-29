@@ -494,7 +494,7 @@ def maintaining_target(
         c_pos: float = 0.5,
         c_ori: float = 0.25,
         c_ori_base: float = 0.25,
-        c_pos_base: float = 0.2,
+        c_pos_base: float = 0.25,
         ) -> th.Tensor:
 
     command = env.command_manager.get_command(command_name)
@@ -511,6 +511,7 @@ def maintaining_target(
     rew_ori = th.exp(-5 * th.square(axa_delta_left)) + \
               th.exp(-5 * th.square(axa_delta_right))
     rew_ori_base = th.exp(-5 * th.square(axa_delta_base))
+    rew_pos_base = th.exp(-5 * th.square(pos_delta_base))
     
     rew_pos = th.where(pos_delta_base < close_threshold,
         rew_pos, th.zeros_like(rew_pos))
@@ -518,8 +519,10 @@ def maintaining_target(
         rew_ori, th.zeros_like(rew_pos))
     rew_ori_base = th.where(pos_delta_base < close_threshold,
         rew_ori_base, th.zeros_like(rew_pos))
+    # rew_pos_base = th.where(pos_delta_base < close_threshold,
+    #     th.ones_like(rew_pos), th.zeros_like(rew_pos))
     rew_pos_base = th.where(pos_delta_base < close_threshold,
-        th.ones_like(rew_pos), th.zeros_like(rew_pos))
+        rew_pos_base, th.zeros_like(rew_pos))
     
     if "Hand_position_rew" not in env.reward_manager.episode_stat_sums.keys():
         env.reward_manager.episode_stat_sums["Hand_position_rew"] = \
@@ -534,7 +537,7 @@ def maintaining_target(
     env.reward_manager.episode_stat_sums["Hand_position_rew"] += rew_pos
     env.reward_manager.episode_stat_sums["Hand_ori_rew"] += rew_ori
     env.reward_manager.episode_stat_sums["Base_ori_rew"] += rew_ori_base
-    env.reward_manager.episode_stat_sums["Base_ori_pos"] += rew_ori_base
+    env.reward_manager.episode_stat_sums["Base_ori_pos"] += rew_pos_base
 
     return c_pos * rew_pos + c_ori * rew_ori + c_ori_base * rew_ori_base + c_pos_base * rew_pos_base
 
@@ -857,7 +860,8 @@ class G1Rewards:
             "close_threshold": 0.5,
             "c_pos": 0.5,
             "c_ori": 0.25,
-            "c_ori_base": 0.25
+            "c_ori_base": 0.25,
+            "c_pos_base": 0.25
         }
     )
     air_time = RewTerm(
@@ -884,8 +888,10 @@ class G1Rewards:
     max_consecutive_success = RewTerm(
         func=max_consecutive_success, 
         # weight=500.,
-        weight=1000.,
-        params={"num_success": 150, "command_name": "global_hand_goal"}
+        # weight=1000.,
+        # weight=2000.,
+        weight=5000.,
+        params={"num_success": 100, "command_name": "global_hand_goal"}
     )
 
 
@@ -912,7 +918,7 @@ class TerminationsCfg:
         params={"limit_euler_angle": [0.5, 1.5]})
     max_consecutive_success = DoneTerm(
         func=max_consecutive_success, 
-        params={"num_success": 150, "command_name": "global_hand_goal"}
+        params={"num_success": 100, "command_name": "global_hand_goal"}
     )
 
 G1_CFG = ArticulationCfg(
@@ -1052,20 +1058,29 @@ class CommandsCfg:
         resampling_time_range=(20., 20.),
         left_hand_body_name="left_palm_link",
         right_hand_body_name="right_palm_link",
+        left_foot_body_name="left_ankle_roll_link",
+        right_foot_body_name="right_ankle_roll_link",
         debug_vis=True,
         ranges=mdp.GlobalHandPoseCommandCfg.Ranges(
             x_range=(-3, 3),
             y_range=(-3, 3),
-            z_range=(0.3, 1.2),
+            # z_range=(0.3, 1.2),
+            # z_range=(0.2, 0.6),
+            z_range=(0.2, 0.4),
             yaw_range=(-2 * np.pi, 2 * np.pi),
             # yaw_range=(0, 0),
         ),
-        # hand_shift=0.15,
-        hand_shift=0.2,
+        hand_shift=0.15,
+        # hand_shift=0.2,
         # delta_yaw=30.,
         delta_yaw=0.,
+        # delta_pitch=30.,
+        delta_pitch=60.,
         # standing_dist=0.5
-        standing_dist=0.4
+        # standing_dist=0.4
+        # standing_dist=0.3
+        standing_dist=0.2
+        # standing_dist=0.25
 
     )
 
@@ -1094,9 +1109,9 @@ class G1StandingEnvCfg(ManagerBasedRLEnvCfg):
         """Post initialization."""
         # general settings
         self.decimation = 4
-        self.episode_length_s = 10.
+        # self.episode_length_s = 10.
         # self.episode_length_s = 3.
-        # self.episode_length_s = 8.
+        self.episode_length_s = 8.
         # simulation settings
         self.sim.dt = 0.005
         self.sim.render_interval = self.decimation

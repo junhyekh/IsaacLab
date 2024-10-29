@@ -324,6 +324,9 @@ class GlobalHandPoseCommandCfg(CommandTermCfg):
     right_hand_body_name: str = MISSING
     """Name of the right hand body in the asset for which the commands are generated."""
 
+    left_foot_body_name: str = MISSING
+    right_foot_body_name: str = MISSING
+
     make_quat_unique: bool = False
     """Whether to make the quaternion unique or not. Defaults to False.
 
@@ -343,8 +346,10 @@ class GlobalHandPoseCommandCfg(CommandTermCfg):
     # Configuration parameters for shifts and angle deltas
     hand_shift: float = 0.15  # Default shift along x-axis in meters
     delta_yaw: float = 30.0  # Default angle delta in degrees
+    delta_pitch: float = 30.0  # Default angle delta in degrees
     standing_dist: float = 0.4 # Distance from the standing point to the object
-    success_threshold: float = 0.1 # Threshold for determining success
+    success_threshold_pos: float = 0.1 # Threshold for determining success
+    success_threshold_ori: float = 0.2 # Threshold for determining success
 
     goal_pose_visualizer_cfg: VisualizationMarkersCfg = \
         FRAME_MARKER_CFG.replace(prim_path="/Visuals/Command/goal_pose")
@@ -382,6 +387,8 @@ class GlobalPoseCommand(CommandTerm):
         self.robot: Articulation = env.scene[cfg.asset_name]
         self.left_hand_idx = self.robot.find_bodies(cfg.left_hand_body_name)[0][0]
         self.right_hand_idx = self.robot.find_bodies(cfg.right_hand_body_name)[0][0]
+        self.left_foot_idx = self.robot.find_bodies(cfg.left_foot_body_name)[0][0]
+        self.right_foot_idx = self.robot.find_bodies(cfg.right_foot_body_name)[0][0]
 
         # Target hand pose command in **world frame**
         self.target_pose_w = th.zeros(self.num_envs, 7, device=self.device)
@@ -428,9 +435,16 @@ class GlobalPoseCommand(CommandTerm):
         )
         root_state_xy_w = th.zeros_like(self.robot.data.root_state_w[..., :3])
         root_state_xy_w[..., :2] = self.robot.data.root_state_w[..., :2]
+
+        avg_foot_pos_xy_w = th.zeros_like(self.robot.data.root_state_w[..., :3])
+        avg_foot_pos_xy_w[..., :2] = 0.5 * (
+            self.robot.data.body_state_w[:, self.left_foot_idx, :2] +
+            self.robot.data.body_state_w[:, self.right_foot_idx, :2])
+
         
         pos_delta_base, rot_delta_base = math_utils.subtract_frame_transforms(
-            root_state_xy_w,
+            # root_state_xy_w,
+            avg_foot_pos_xy_w,
             math_utils.yaw_quat(self.robot.data.root_state_w[..., 3:7]),
             self.standing_pose_w[:, :3],
             math_utils.yaw_quat(self.standing_pose_w[:, 3:]),
@@ -477,18 +491,29 @@ class GlobalPoseCommand(CommandTerm):
 
         root_state_xy_w = th.zeros_like(self.robot.data.root_state_w[..., :3])
         root_state_xy_w[..., :2] = self.robot.data.root_state_w[..., :2]
+
+        avg_foot_pos_xy_w = th.zeros_like(self.robot.data.root_state_w[..., :3])
+        avg_foot_pos_xy_w[..., :2] = 0.5 * (
+            self.robot.data.body_state_w[:, self.left_foot_idx, :2] +
+            self.robot.data.body_state_w[:, self.right_foot_idx, :2])
+
         pos_error_base, rot_error_base = math_utils.compute_pose_error(
-            root_state_xy_w,
+            # root_state_xy_w,
+            avg_foot_pos_xy_w,
             math_utils.yaw_quat(self.robot.data.root_state_w[..., 3:7]),
             self.standing_pose_w[:, :3],
             math_utils.yaw_quat(self.standing_pose_w[:, 3:]),
         )
         self.metrics["position_error_base"] = th.norm(pos_error_right, dim=-1)
         self.metrics["orientation_error_base"] = th.norm(rot_error_right, dim=-1)
-        successes = th.logical_and(
-            self.metrics["position_error_left"] <= self.cfg.success_threshold,
-            self.metrics["position_error_right"] <= self.cfg.success_threshold,
+        successes_pos = th.logical_and(
+            self.metrics["position_error_left"] <= self.cfg.success_threshold_pos,
+            self.metrics["position_error_right"] <= self.cfg.success_threshold_pos,
         )
+        successes_ori = th.logical_and(
+            self.metrics["orientation_error_left"] <= self.cfg.success_threshold_ori,
+            self.metrics["orientation_error_right"] <= self.cfg.success_threshold_ori)
+        successes = th.logical_and(successes_pos, successes_ori)
         self.metrics["consecutive_success"] *= successes.float()
         self.metrics["consecutive_success"] += successes.float()
         
@@ -537,14 +562,17 @@ class GlobalPoseCommand(CommandTerm):
 
         # Compute delta_quat for left and right hands (±delta_yaw along yaw)
         delta_yaw_rad = th.tensor(th.pi * self.cfg.delta_yaw / 180, device=device)
+        delta_pitch_rad = th.tensor(th.pi * self.cfg.delta_pitch / 180, device=device)
         delta_quat_left = math_utils.quat_from_euler_xyz(
             th.zeros(num_envs, device=device),
-            th.zeros(num_envs, device=device),
+            # th.zeros(num_envs, device=device),
+            delta_pitch_rad,
             -delta_yaw_rad,
         )
         delta_quat_right = math_utils.quat_from_euler_xyz(
             th.zeros(num_envs, device=device),
-            th.zeros(num_envs, device=device),
+            # th.zeros(num_envs, device=device),
+            delta_pitch_rad,
             delta_yaw_rad,
         )
 
@@ -554,7 +582,6 @@ class GlobalPoseCommand(CommandTerm):
         self.target_pose_w_right[env_ids, 3:7] = \
             math_utils.quat_mul(self.target_pose_w[env_ids, 3:7], delta_quat_right)
 
-        self.metrics["consecutive_success"][env_ids] = 0.
 
     def _update_command(self):
         pass
