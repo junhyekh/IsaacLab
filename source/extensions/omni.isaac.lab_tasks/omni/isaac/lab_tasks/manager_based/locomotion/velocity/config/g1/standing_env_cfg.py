@@ -1067,21 +1067,25 @@ class CommandsCfg:
             # z_range=(0.3, 1.2),
             # z_range=(0.2, 0.6),
             # z_range=(0.2, 0.4),
-            z_range=(0.4, 0.4),
+            # z_range=(0.4, 0.4),
+            z_range=(0.2, 0.2),
             # yaw_range=(-2 * np.pi, 2 * np.pi),
             yaw_range=(0, 0),
         ),
         hand_shift=0.15,
         # hand_shift=0.2,
         # delta_yaw=30.,
-        delta_yaw=0.,
+        # delta_yaw=0.,
+        delta_yaw=15.,
         # delta_pitch=30.,
-        # delta_pitch=30.,
-        delta_pitch=45.,
+        delta_pitch=30.,
+        # delta_pitch=45.,
+        # delta_pitch=60.,
         # standing_dist=0.5
-        # standing_dist=0.4
+        standing_dist=0.4
         # standing_dist=0.3
-        standing_dist=0.2
+        # standing_dist=0.2
+        # standing_dist=0.2
         # standing_dist=0.25
 
     )
