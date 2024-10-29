@@ -108,19 +108,19 @@ def interpolate_pose(
     # Linear interpolation of position
     interp_pos = pos1 + (pos2 - pos1) * t
 
-    # Normalize quaternions
-    q1 = q1 / q1.norm(dim=1, keepdim=True)
-    q2 = q2 / q2.norm(dim=1, keepdim=True)
+    # # Normalize quaternions
+    # q1 = q1 / q1.norm(dim=1, keepdim=True)
+    # q2 = q2 / q2.norm(dim=1, keepdim=True)
 
-    # Convert quaternions to axis-angle representation
-    aa1 = math_utils.axis_angle_from_quat(q1)
-    aa2 = math_utils.axis_angle_from_quat(q2)
+    # # Convert quaternions to axis-angle representation
+    # aa1 = math_utils.axis_angle_from_quat(q1)
+    # aa2 = math_utils.axis_angle_from_quat(q2)
 
-    # Interpolate axis-angles
-    interp_aa = aa1 + (aa2 - aa1) * t
+    # # Interpolate axis-angles
+    # interp_aa = aa1 + (aa2 - aa1) * t
 
     # Convert interpolated axis-angle back to quaternion
-    interp_q = safe_rotvec2quat(interp_aa)
+    interp_q = math_utils.slerp(q1, q1, t.squeeze())
 
     # Concatenate interpolated position and quaternion
     interp_pose = th.cat([interp_pos, interp_q], dim=1)
