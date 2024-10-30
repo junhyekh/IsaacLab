@@ -60,3 +60,13 @@ class G1StandingPPORunnerCfg(G1RoughPPORunnerCfg):
         self.experiment_name = "g1_stand"
         self.policy.actor_hidden_dims = [256, 128, 128]
         self.policy.critic_hidden_dims = [256, 128, 128]
+
+@configclass
+class G1ArmTrackPPORunnerCfg(G1RoughPPORunnerCfg):
+    def __post_init__(self):
+        super().__post_init__()
+
+        self.max_iterations = 1500
+        self.experiment_name = "g1_arm_track"
+        self.policy.actor_hidden_dims = [256, 128, 128]
+        self.policy.critic_hidden_dims = [256, 128, 128]
