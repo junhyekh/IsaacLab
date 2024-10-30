@@ -220,7 +220,7 @@ G1_FIXED_HAND_CFG =ArticulationCfg(
 
 G1_29_FIXED_HAND_CFG =ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
-        usd_path=f"source/extensions/omni.isaac.lab_assets/data/g1_29/g1_hand.usd",
+        usd_path=f"source/extensions/omni.isaac.lab_assets/data/g1_29_non_convex/g1_hand.usd",
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
