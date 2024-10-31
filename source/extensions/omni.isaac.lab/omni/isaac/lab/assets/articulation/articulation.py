@@ -885,6 +885,41 @@ class Articulation(AssetBase):
         )
 
     """
+    Gravity of body
+    """
+    def set_disable_gravity(
+        self, body_ids: Sequence[int] | slice | None = None,
+        env_ids: Sequence[int] | None = None
+    ):
+        physx_env_ids = env_ids
+        if env_ids is None:
+            physx_env_ids = self._ALL_INDICES
+            env_ids = slice(None)
+        if env_ids != slice(None) and body_ids != slice(None):
+            env_ids = env_ids[:, None]
+        if body_ids is None:
+            body_ids = slice(None)
+        data = self.root_physx_view.get_disable_gravities()
+        data[env_ids, body_ids] = 1
+        self.root_physx_view.set_disable_gravities(data, physx_env_ids.cpu())
+    
+    def set_joint_gravity_compensation(
+        self, joint_ids: Sequence[int] | slice | None = None,
+        env_ids: Sequence[int] | None = None
+    ):
+        
+        # resolve indices
+        if env_ids is None:
+            env_ids = slice(None)
+        if joint_ids is None:
+            joint_ids = slice(None)
+        # broadcast env_ids if needed to allow double indexing
+        if env_ids != slice(None) and joint_ids != slice(None):
+            env_ids = env_ids[:, None]
+        torque = self.root_physx_view.get_generalized_gravity_forces()
+        # set targets
+        self._data.joint_effort_target[env_ids, joint_ids] = torque[env_ids, joint_ids]
+    """
     Internal helper.
     """
 
