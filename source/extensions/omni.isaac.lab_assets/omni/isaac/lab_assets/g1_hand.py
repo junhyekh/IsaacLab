@@ -322,3 +322,49 @@ G1_29_FIXED_HAND_CFG =ArticulationCfg(
         ),
     },
 )
+
+G1_Dual_Arm_CFG = ArticulationCfg(
+    spawn=sim_utils.UsdFileCfg(
+        usd_path=f"source/extensions/omni.isaac.lab_assets/data/g1_dual_arm/g1.usd",
+        activate_contact_sensors=True,
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            disable_gravity=False,
+            retain_accelerations=False,
+            linear_damping=0.0,
+            angular_damping=0.0,
+            max_linear_velocity=1000.0,
+            max_angular_velocity=1000.0,
+            max_depenetration_velocity=1.0,
+        ),
+        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+            enabled_self_collisions=True, solver_position_iteration_count=8, solver_velocity_iteration_count=4
+        ),
+    ),
+    init_state=ArticulationCfg.InitialStateCfg(
+        pos=(0.0, 0.0, 0.74),
+        joint_pos={
+            "left_shoulder_roll_joint": 0.16,
+            "left_shoulder_pitch_joint": 0.35,
+            "right_shoulder_roll_joint": -0.16,
+            "right_shoulder_pitch_joint": 0.35,
+            ".*_wrist_.*": 0.
+        },
+        joint_vel={".*": 0.0},
+    ),
+    soft_joint_pos_limit_factor=1.,
+    actuators={
+        "arms": ImplicitActuatorCfg(
+            joint_names_expr=[
+                ".*"
+            ],
+            effort_limit=40.0,
+            velocity_limit=40.0,
+            stiffness=0.0,
+            damping=0.0,
+            # armature={
+            #     ".*_shoulder_.*": 0.01,
+            #     ".*_elbow_.*": 0.01,
+            # },
+        )
+    },
+)
