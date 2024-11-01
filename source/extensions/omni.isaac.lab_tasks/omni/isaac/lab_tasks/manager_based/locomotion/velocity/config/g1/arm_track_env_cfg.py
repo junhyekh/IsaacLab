@@ -32,7 +32,6 @@ from omni.isaac.lab.markers import VisualizationMarkers, VisualizationMarkersCfg
 from omni.isaac.lab.markers.config import FRAME_MARKER_CFG
 from omni.isaac.lab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
 from omni.isaac.lab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
-from omni.isaac.lab_assets.g1_hand import G1_HAND_CFG, G1_FIXED_HAND_CFG, G1_29_FIXED_HAND_CFG
 
 
 import domi.env.help.zmp as zmp
@@ -170,6 +169,7 @@ class ActionsCfg:
                                                    use_relative_mode=False,
                                                    ik_method="dls"),
             scale=1.0,
+            compensate_gravity=True,
         )
 
 
@@ -333,12 +333,13 @@ class G1Rewards:
     )
     dof_vel_l2 = RewTerm(func=mdp.joint_vel_l2, weight=-1e-5)
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.005)
+    # termination_penalty = RewTerm(func=mdp.is_terminated, weight=-20.0)
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-20.0)
     zmp_supp_dist = RewTerm(
         func=stand_env.zmp_supp_dist,
-        # weight=0.3,
+        weight=0.3,
         # weight=0.1,
-        weight=0.,
+        # weight=0.,
         params={
             "sigma": 10,
             "asset_cfg": SceneEntityCfg("robot"),
@@ -379,13 +380,15 @@ class G1Rewards:
     # Tracking rewards
     hand_pos_tracking = RewTerm(
         func=position_command_error,
-        weight=-1,
+        # weight=-1,
+        weight=0.,
         params={"command_name": "hands_pose"},
     )
     hand_ori_tracking = RewTerm(
         func=orientation_command_error,
         # weight=-0.2,
-        weight=-0.5,
+        # weight=-0.5,
+        weight=0.,
         params={"command_name": "hands_pose"},
     )
     # walk_to_target = RewTerm(
@@ -465,7 +468,7 @@ class TerminationsCfg:
     
     bad_ori = DoneTerm(
         func=stand_env.bad_ori,
-        params={"limit_euler_angle": [0.7, 1.5]})
+        params={"limit_euler_angle": [0.7, 1.0]})
     # max_consecutive_success = DoneTerm(
     #     func=max_consecutive_success, 
     #     params={"num_success": 100, "command_name": "global_hand_goal"}
@@ -495,18 +498,137 @@ class CommandsCfg:
     hands_pose = mdp.IKHandTrajCommandCfg(
         class_type=mdp.IKHandTrajCommand,
         asset_name="robot",
-        resampling_time_range=(5., 5.),
+        resampling_time_range=(3., 3.),
         left_hand_body_name="left_hand_palm_link",
         right_hand_body_name="right_hand_palm_link",
+        left_foot_body_name="left_ankle_roll_link",
+        right_foot_body_name="right_ankle_roll_link",
+        torso_body_name="torso_link",
         debug_vis=True,
         ranges=mdp.IKHandTrajCommandCfg.Ranges(
-            r_range=(0.4, 0.5),
-            polar_range=(np.pi/3, np.pi/2),
-            azimuth_range=(np.pi/6, np.pi/3),
+            r_range=(0.5, 0.6),
+            # r_range=(0.4, 0.5),
+            # r_range=(0.1, 0.5),
+            theta_range_right=(-np.pi/3, -np.pi/6),
+            # theta_range_right=(-np.pi/2, -np.pi/6),
+            # theta_range_right=(-np.pi/3, 0.),
+            theta_range_left=(0, np.pi/4),
+            z_range=(0.6, 1.0),
+            # z_range=(0.1, 0.5),
+            # z_range=(0.5, 1.0),
 
         ),
     )
 
+G1_29_FIXED_HAND_CFG =ArticulationCfg(
+    spawn=sim_utils.UsdFileCfg(
+        usd_path=f"source/extensions/omni.isaac.lab_assets/data/g1_29_non_convex/g1_hand.usd",
+        activate_contact_sensors=True,
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            disable_gravity=False,
+            retain_accelerations=False,
+            linear_damping=0.0,
+            angular_damping=0.0,
+            max_linear_velocity=1000.0,
+            max_angular_velocity=1000.0,
+            max_depenetration_velocity=1.0,
+        ),
+        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+            enabled_self_collisions=True, solver_position_iteration_count=8, solver_velocity_iteration_count=4
+        ),
+    ),
+    init_state=ArticulationCfg.InitialStateCfg(
+        pos=(0.0, 0.0, 0.85),
+        joint_pos={
+            ".*_hip_pitch_joint": -0.20,
+            ".*_knee_joint": 0.42,
+            ".*_ankle_pitch_joint": -0.23,
+            # ".*_elbow_joint": 0.87,
+            ".*_elbow_joint": 0.50,
+            # "left_shoulder_roll_joint": 0.16,
+            "left_shoulder_roll_joint": 0.35,
+            # "left_shoulder_pitch_joint": 0.35,
+            "left_shoulder_pitch_joint": -0.20,
+            # "right_shoulder_roll_joint": -0.16,
+            "right_shoulder_roll_joint": -0.35,
+            # "right_shoulder_pitch_joint": 0.35,
+            "right_shoulder_pitch_joint": -0.20,
+            "waist_.*": 0.,
+            ".*_wrist_.*": 0.
+        },
+        joint_vel={".*": 0.0},
+    ),
+    soft_joint_pos_limit_factor=0.95,
+    actuators={
+        "legs": ImplicitActuatorCfg(
+            joint_names_expr=[
+                ".*_hip_yaw_joint",
+                ".*_hip_roll_joint",
+                ".*_hip_pitch_joint",
+                ".*_knee_joint",
+            ],
+            effort_limit=300,
+            velocity_limit=100.0,
+            stiffness={
+                ".*_hip_yaw_joint": 150.0,
+                ".*_hip_roll_joint": 150.0,
+                ".*_hip_pitch_joint": 200.0,
+                ".*_knee_joint": 200.0,
+            },
+            damping={
+                ".*_hip_yaw_joint": 5.0,
+                ".*_hip_roll_joint": 5.0,
+                ".*_hip_pitch_joint": 5.0,
+                ".*_knee_joint": 5.0,
+            },
+            armature={
+                ".*_hip_.*": 0.01,
+                ".*_knee_joint": 0.01,
+            },
+        ),
+        "waist":  ImplicitActuatorCfg(
+            joint_names_expr=[
+                "waist_.*"
+            ],
+            effort_limit=300,
+            velocity_limit=100.0,
+            stiffness={
+                "waist_.*": 150.0,
+            },
+            damping={
+                "waist_.*": 5.0,
+            },
+            armature={
+                "waist_.*": 0.01,
+            },
+        ),
+        "feet": ImplicitActuatorCfg(
+            effort_limit=20,
+            joint_names_expr=[".*_ankle_pitch_joint", ".*_ankle_roll_joint"],
+            stiffness=20.0,
+            damping=2.0,
+            armature=0.01,
+        ),
+        "arms": ImplicitActuatorCfg(
+            joint_names_expr=[
+                ".*_shoulder_pitch_joint",
+                ".*_shoulder_roll_joint",
+                ".*_shoulder_yaw_joint",
+                ".*_elbow_joint",
+                ".*_wrist_.*"
+            ],
+            effort_limit=100,
+            velocity_limit=100.0,
+            stiffness=40.0,
+            damping=10.0,
+            armature={
+                ".*_shoulder_.*": 0.01,
+                ".*_elbow_.*": 0.01,
+                ".*_wrist_.*": 0.01
+            },
+        ),
+    },
+)
 
 
 @configclass
@@ -532,7 +654,7 @@ class G1StandingEnvCfg(ManagerBasedRLEnvCfg):
         """Post initialization."""
         # general settings
         self.decimation = 4
-        self.episode_length_s = 10.
+        self.episode_length_s = 20.
         # self.episode_length_s = 3.
         # self.episode_length_s = 8.
         # simulation settings
@@ -548,7 +670,6 @@ class G1StandingEnvCfg(ManagerBasedRLEnvCfg):
         # Scene
         self.scene.robot = G1_29_FIXED_HAND_CFG.replace(
             prim_path="{ENV_REGEX_NS}/Robot",
-            
             )
 
         # Randomization

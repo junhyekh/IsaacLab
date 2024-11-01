@@ -49,6 +49,36 @@ def sphere2cart(sphere):
     cart[..., 2] = sphere[..., 0] * th.cos(sphere[..., 2]) * th.sin(sphere[..., 1])
     return cart
 
+def cart2cylinder(cart):
+    """
+    Args:
+        cart (Tensor): Cartesian coordinates with shape (..., 3),
+            where the last dimension represents [x, y, z].
+    Returns:
+        cylinder (Tensor): Cylindrical coordinates with shape (..., 3),
+            where the last dimension represents [r, theta, z].
+    """
+    cylinder = th.zeros_like(cart)
+    cylinder[..., 0] = th.norm(cart[..., :2], dim=-1)  # r = sqrt(x^2 + y^2)
+    cylinder[..., 1] = th.atan2(cart[..., 1], cart[..., 0])  # theta = atan2(y, x)
+    cylinder[..., 2] = cart[..., 2]  # z-coordinate remains the same
+    return cylinder
+
+def cylinder2cart(cylinder):
+    """
+    Args:
+        cylinder (Tensor): Cylindrical coordinates with shape (..., 3),
+            where the last dimension represents [r, theta, z].
+        Returns:
+            cart (Tensor): Cartesian coordinates with shape (..., 3),
+            where the last dimension represents [x, y, z].
+    """
+    cart = th.zeros_like(cylinder)
+    cart[..., 0] = cylinder[..., 0] * th.cos(cylinder[..., 1])  # x = r * cos(theta)
+    cart[..., 1] = cylinder[..., 0] * th.sin(cylinder[..., 1])  # y = r * sin(theta)
+    cart[..., 2] = cylinder[..., 2]  # z-coordinate remains the same
+    return cart
+
 def cart2euler(cart):
     euler = th.zeros_like(cart)
     
@@ -120,7 +150,7 @@ def interpolate_pose(
     # interp_aa = aa1 + (aa2 - aa1) * t
 
     # Convert interpolated axis-angle back to quaternion
-    interp_q = math_utils.slerp(q1, q1, t.squeeze())
+    interp_q = math_utils.slerp(q1, q2, t.squeeze())
 
     # Concatenate interpolated position and quaternion
     interp_pose = th.cat([interp_pos, interp_q], dim=1)
@@ -142,6 +172,10 @@ class IKHandTrajCommandCfg(CommandTermCfg):
     right_hand_body_name: str = MISSING
     """Name of the right hand body in the asset for which the commands are generated."""
 
+    left_foot_body_name: str = MISSING
+    right_foot_body_name: str = MISSING
+    torso_body_name: str = MISSING
+
     make_quat_unique: bool = False
     """Whether to make the quaternion unique or not. Defaults to False.
 
@@ -152,8 +186,9 @@ class IKHandTrajCommandCfg(CommandTermCfg):
     class Ranges:
         # Ranges for the commands in cylindrical coordinates
         r_range: tuple[float, float] = MISSING  # min, max [m]
-        polar_range: tuple[float, float] = MISSING  # min, max [rad]
-        azimuth_range: tuple[float, float] = MISSING  # min, max [m]
+        theta_range_left: tuple[float, float] = MISSING  # min, max [rad]
+        theta_range_right: tuple[float, float] = MISSING  # min, max [rad]
+        z_range: tuple[float, float] = MISSING  # min, max [m]
     
     ranges: Ranges = MISSING
 
@@ -194,6 +229,11 @@ class IKHandTrajCommand(CommandTerm):
         self.left_hand_idx = self.robot.find_bodies(cfg.left_hand_body_name)[0][0]
         self.right_hand_idx = self.robot.find_bodies(cfg.right_hand_body_name)[0][0]
 
+        self.left_foot_idx = self.robot.find_bodies(cfg.left_foot_body_name)[0][0]
+        self.right_foot_idx = self.robot.find_bodies(cfg.right_foot_body_name)[0][0]
+
+        self.torso_idx = self.robot.find_bodies(cfg.torso_body_name)[0][0]
+
         # Current command in the spherical coordinate
         self.curr_command_s_left = th.zeros(self.num_envs, 7, device=self.device)
         self.curr_command_s_right = th.zeros(self.num_envs, 7, device=self.device)
@@ -208,9 +248,12 @@ class IKHandTrajCommand(CommandTerm):
         self.lerp_command_w_left = th.zeros_like(self.next_command_s_left)
         self.lerp_command_w_right = th.zeros_like(self.next_command_s_left)
 
+        self.lerp_command_s_left = th.zeros_like(self.next_command_s_left)
+        self.lerp_command_s_right = th.zeros_like(self.next_command_s_left)
+
         # Cylindrical frame wrt **world frame**
-        self.spherical_pos_w = th.zeros(self.num_envs, 3, device=self.device)
-        self.spherical_quat_w = th.zeros(self.num_envs, 4, device=self.device)
+        self.cylinder_pos_w = th.zeros(self.num_envs, 3, device=self.device)
+        self.cylinder_quat_w = th.zeros(self.num_envs, 4, device=self.device)
 
 
         if self.cfg.resampling_time_range[0] != self.cfg.resampling_time_range[1]:
@@ -238,26 +281,37 @@ class IKHandTrajCommand(CommandTerm):
         """Returns the pose delta in the **world frame**. Shape is (num_envs, 12)."""
         self._update_command()
 
-        # Compute pose delta between hand pose and target pose
-        pos_delta_left, rot_delta_left = math_utils.compute_pose_error(
+        # Here, we should represent the pose delta in the base frame(or cylinder frame)
+        pos_hand_s_left, quat_hand_s_left = math_utils.subtract_frame_transforms(
+            self.cylinder_pos_w,
+            self.cylinder_quat_w,
             self.robot.data.body_state_w[:, self.left_hand_idx, :3],
-            self.robot.data.body_state_w[:, self.left_hand_idx, 3:7],
-            self.lerp_command_w_left[:, :3],
-            self.lerp_command_w_left[:, 3:],
+            self.robot.data.body_state_w[:, self.left_hand_idx, 3:7]
         )
-        pos_delta_right, rot_delta_right = math_utils.compute_pose_error(
+        pos_delta_s_left, rot_delta_s_left = math_utils.compute_pose_error(
+            pos_hand_s_left,
+            quat_hand_s_left,
+            self.lerp_command_s_left[:, :3],
+            self.lerp_command_s_left[:, 3:],
+        )
+        pos_hand_s_right, quat_hand_s_right = math_utils.subtract_frame_transforms(
+            self.cylinder_pos_w,
+            self.cylinder_quat_w,
             self.robot.data.body_state_w[:, self.right_hand_idx, :3],
-            self.robot.data.body_state_w[:, self.right_hand_idx, 3:7],
-            self.lerp_command_w_right[:, :3],
-            self.lerp_command_w_right[:, 3:],
+            self.robot.data.body_state_w[:, self.right_hand_idx, 3:7]
+        )
+        pos_delta_s_right, rot_delta_s_right = math_utils.compute_pose_error(
+            pos_hand_s_right,
+            quat_hand_s_right,
+            self.lerp_command_s_right[:, :3],
+            self.lerp_command_s_right[:, 3:],
         )
 
-        axa_delta_left = math_utils.wrap_to_pi(
-            math_utils.axis_angle_from_quat(rot_delta_left))
-        axa_delta_right= math_utils.wrap_to_pi(
-            math_utils.axis_angle_from_quat(rot_delta_right))
 
-        return th.cat((pos_delta_left, pos_delta_right, axa_delta_left, axa_delta_right), dim=-1)
+        axa_delta_s_left = math_utils.wrap_to_pi(rot_delta_s_left)
+        axa_delta_s_right = math_utils.wrap_to_pi(rot_delta_s_right)
+
+        return th.cat((pos_delta_s_right, axa_delta_s_right, pos_delta_s_left, axa_delta_s_left), dim=-1)
 
     """
     Implementation specific functions.
@@ -297,41 +351,43 @@ class IKHandTrajCommand(CommandTerm):
         self.curr_command_s_left = self.next_command_s_left.clone()
         self.curr_command_s_right = self.next_command_s_right.clone()
 
-        reset_envs = th.where(self.command_counter == 1)
-        # Initialize current command as the current hand pose
-        self.spherical_pos_w[..., 2] = self.cfg.spherical_z
-        self.spherical_pos_w[..., :2] = self.robot.data.root_pos_w[..., :2]
-        self.spherical_quat_w = math_utils.yaw_quat(self.robot.data.root_quat_w)
+
+        self._update_cylinder_frame()
+
+
         curr_hand_s_left_pos, curr_hand_s_left_quat =\
             math_utils.subtract_frame_transforms(
-                self.spherical_pos_w,
-                self.spherical_quat_w,
+                self.cylinder_pos_w,
+                self.cylinder_quat_w,
                 self.robot.data.body_state_w[:, self.left_hand_idx, :3],
                 self.robot.data.body_state_w[:, self.left_hand_idx, 3:7],
         )
         curr_hand_s_right_pos, curr_hand_s_right_quat =\
             math_utils.subtract_frame_transforms(
-                self.spherical_pos_w,
-                self.spherical_quat_w,
+                self.cylinder_pos_w,
+                self.cylinder_quat_w,
                 self.robot.data.body_state_w[:, self.right_hand_idx, :3],
                 self.robot.data.body_state_w[:, self.right_hand_idx, 3:7],
         )
-        self.curr_command_s_left[reset_envs] = \
-            th.cat((curr_hand_s_left_pos[reset_envs], curr_hand_s_left_quat[reset_envs]), dim=-1)
-        self.curr_command_s_right[reset_envs] = \
-            th.cat((curr_hand_s_right_pos[reset_envs], curr_hand_s_right_quat[reset_envs]), dim=-1)
+
+        self.curr_command_s_left = \
+            th.cat((curr_hand_s_left_pos, curr_hand_s_left_quat), dim=-1)
+        self.curr_command_s_right = \
+            th.cat((curr_hand_s_right_pos, curr_hand_s_right_quat), dim=-1)
 
         next_pos_s_left = th.zeros((num_envs, 3), device=device)
         next_pos_s_left[..., 0] = th.empty(num_envs, device=device).uniform_(
             *self.cfg.ranges.r_range)
         next_pos_s_left[..., 1] = th.empty(num_envs, device=device).uniform_(
-            *self.cfg.ranges.polar_range)
+            *self.cfg.ranges.theta_range_left)
         next_pos_s_left[..., 2] = th.empty(num_envs, device=device).uniform_(
-            *self.cfg.ranges.azimuth_range)
+            *self.cfg.ranges.z_range)
 
 
-        self.next_command_s_left[env_ids, :3]= sphere2cart(next_pos_s_left)
-        next_euler_s_left = cart2euler(sphere2cart(next_pos_s_left))
+        self.next_command_s_left[env_ids, :3]= cylinder2cart(next_pos_s_left)
+        next_euler_s_left = th.zeros((num_envs, 3), device=device)
+        next_euler_s_left[..., 2] = next_pos_s_left[..., 1]
+
         noise_left = th.empty((num_envs, 3), device=device).uniform_(
             -np.pi * self.cfg.angle_noise/180., 
             -np.pi * self.cfg.angle_noise/180.)
@@ -347,13 +403,15 @@ class IKHandTrajCommand(CommandTerm):
         next_pos_s_right[..., 0] = th.empty(num_envs, device=device).uniform_(
             *self.cfg.ranges.r_range)
         next_pos_s_right[..., 1] = th.empty(num_envs, device=device).uniform_(
-            *self.cfg.ranges.polar_range)
+            *self.cfg.ranges.theta_range_right)
         next_pos_s_right[..., 2] = th.empty(num_envs, device=device).uniform_(
-            *self.cfg.ranges.azimuth_range)
+            *self.cfg.ranges.z_range)
 
 
-        self.next_command_s_right[env_ids, :3]= sphere2cart(next_pos_s_right)
-        next_euler_s_right = cart2euler(sphere2cart(next_pos_s_right))
+        self.next_command_s_right[env_ids, :3]= cylinder2cart(next_pos_s_right)
+        next_euler_s_right = th.zeros((num_envs, 3), device=device)
+        next_euler_s_right[..., 2] = next_pos_s_right[..., 1]
+
         noise_right = th.empty((num_envs, 3), device=device).uniform_(
             -np.pi * self.cfg.angle_noise/180., 
             -np.pi * self.cfg.angle_noise/180.)
@@ -364,6 +422,15 @@ class IKHandTrajCommand(CommandTerm):
             next_euler_s_right[..., 1],
             next_euler_s_right[..., 2],
         )
+    
+    def _update_cylinder_frame(self):
+
+        self.cylinder_pos_w[..., :2] = self.robot.data.root_pos_w[..., :2]
+        self.cylinder_quat_w = math_utils.yaw_quat(self.robot.data.root_quat_w)
+
+        # self.cylinder_pos_w = self.robot.data.body_state_w[:, self.torso_idx, :3]
+        # self.cylinder_quat_w = self.robot.data.body_state_w[:, self.torso_idx, 3:7]
+
 
 
     def _update_command(self):
@@ -372,66 +439,60 @@ class IKHandTrajCommand(CommandTerm):
         poses varies as it moves, we need to refresh the target pose
         considering the robot's movement.
         '''
-        base_pos_w = self.robot.data.root_pos_w
-        base_quat_w = self.robot.data.root_quat_w
 
-
-        # # Compute the pose of attached cylindrical frame
-
-        self.spherical_pos_w[..., :2] = base_pos_w[..., :2]
-        self.spherical_quat_w = math_utils.yaw_quat(base_quat_w)
+        self._update_cylinder_frame()
 
         interpolation = 1. - (self.time_left/self.resampling_time)
-        lerp_command_s_left = interpolate_pose(
+        self.lerp_command_s_left = interpolate_pose(
             self.curr_command_s_left,
             self.next_command_s_left,
             interpolation
         )
         self.lerp_command_w_left[:, :3], self.lerp_command_w_left[:, 3:] = \
             math_utils.combine_frame_transforms(
-                self.spherical_pos_w,
-                self.spherical_quat_w,
-                lerp_command_s_left[:, :3],
-                lerp_command_s_left[:, 3:])
+                self.cylinder_pos_w,
+                self.cylinder_quat_w,
+                self.lerp_command_s_left[:, :3],
+                self.lerp_command_s_left[:, 3:])
 
-        lerp_command_s_right = interpolate_pose(
+        self.lerp_command_s_right = interpolate_pose(
             self.curr_command_s_right,
             self.next_command_s_right,
             interpolation
         )
         self.lerp_command_w_right[:, :3], self.lerp_command_w_right[:, 3:] = \
             math_utils.combine_frame_transforms(
-                self.spherical_pos_w,
-                self.spherical_quat_w,
-                lerp_command_s_right[:, :3],
-                lerp_command_s_right[:, 3:])
+                self.cylinder_pos_w,
+                self.cylinder_quat_w,
+                self.lerp_command_s_right[:, :3],
+                self.lerp_command_s_right[:, 3:])
 
 
     def _set_debug_vis_impl(self, debug_vis: bool):
         # Create markers if necessary for the first time
         if debug_vis:
             if not hasattr(self, "goal_pose_visualizer_left"):
-                self.goal_pose_visualizer_left = VisualizationMarkers(
-                    self.cfg.goal_pose_visualizer_cfg
-                )
+                # self.goal_pose_visualizer_left = VisualizationMarkers(
+                #     self.cfg.goal_pose_visualizer_cfg
+                # )
                 self.goal_pose_visualizer_right = VisualizationMarkers(
                     self.cfg.goal_pose_visualizer_cfg
                 )
-                self.current_pose_visualizer_left = VisualizationMarkers(
-                    self.cfg.current_pose_visualizer_cfg
-                )
+                # self.current_pose_visualizer_left = VisualizationMarkers(
+                #     self.cfg.current_pose_visualizer_cfg
+                # )
                 self.current_pose_visualizer_right = VisualizationMarkers(
                     self.cfg.current_pose_visualizer_cfg
                 )
-            self.goal_pose_visualizer_left.set_visibility(True)
+            # self.goal_pose_visualizer_left.set_visibility(True)
             self.goal_pose_visualizer_right.set_visibility(True)
-            self.current_pose_visualizer_left.set_visibility(True)
+            # self.current_pose_visualizer_left.set_visibility(True)
             self.current_pose_visualizer_right.set_visibility(True)
         else:
             if hasattr(self, "goal_pose_visualizer_left"):
-                self.goal_pose_visualizer_left.set_visibility(False)
+                # self.goal_pose_visualizer_left.set_visibility(False)
                 self.goal_pose_visualizer_right.set_visibility(False)
-                self.current_pose_visualizer_left.set_visibility(False)
+                # self.current_pose_visualizer_left.set_visibility(False)
                 self.current_pose_visualizer_right.set_visibility(False)
 
     def _debug_vis_callback(self, event):
@@ -439,16 +500,16 @@ class IKHandTrajCommand(CommandTerm):
         if not self.robot.is_initialized:
             return
         self._update_command()
-        self.goal_pose_visualizer_left.visualize(
-            self.lerp_command_w_left[:, :3], self.lerp_command_w_left[:, 3:]
-        )
+        # self.goal_pose_visualizer_left.visualize(
+        #     self.lerp_command_w_left[:, :3], self.lerp_command_w_left[:, 3:]
+        # )
         self.goal_pose_visualizer_right.visualize(
             self.lerp_command_w_right[:, :3], self.lerp_command_w_right[:, 3:]
         )
-        body_pose_w_left = self.robot.data.body_state_w[:, self.left_hand_idx]
-        self.current_pose_visualizer_left.visualize(
-            body_pose_w_left[:, :3], body_pose_w_left[:, 3:7]
-        )
+        # body_pose_w_left = self.robot.data.body_state_w[:, self.left_hand_idx]
+        # self.current_pose_visualizer_left.visualize(
+        #     body_pose_w_left[:, :3], body_pose_w_left[:, 3:7]
+        # )
         body_pose_w_right = self.robot.data.body_state_w[:, self.right_hand_idx]
         self.current_pose_visualizer_right.visualize(
             body_pose_w_right[:, :3], body_pose_w_right[:, 3:7]

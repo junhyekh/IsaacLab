@@ -248,3 +248,5 @@ class DifferentialInverseKinematicsActionCfg(ActionTermCfg):
     """Scale factor for the action. Defaults to 1.0."""
     controller: DifferentialIKControllerCfg = MISSING
     """The configuration for the differential IK controller."""
+    compensate_gravity: bool = False
+    """If true, gravity compensation torque will be automatically added"""

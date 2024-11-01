@@ -301,6 +301,7 @@ def energy(
 def bad_ori(
     env: ManagerBasedRLEnv, 
     limit_euler_angle: List[float] = [0.5, 1.5], 
+    torso_body_name="torso_link",
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> th.Tensor:
     """Terminate when the asset's orientation is out of predefined range
@@ -311,9 +312,11 @@ def bad_ori(
             exceed this threshold
     """
     # extract the used quantities (to enable type-hinting)
-    asset: RigidObject = env.scene[asset_cfg.name]
+    asset: Articulation = env.scene[asset_cfg.name]
+    torso_idx = asset.find_bodies(torso_body_name)[0][0]
     euler = math_utils.wrap_to_pi(th.stack(
-        math_utils.euler_xyz_from_quat(asset.data.root_quat_w), dim=-1))
+        # math_utils.euler_xyz_from_quat(asset.data.root_quat_w), dim=-1))
+        math_utils.euler_xyz_from_quat(asset.data.body_state_w[:, torso_idx, 3:7]), dim=-1))
     out_of_limit = th.logical_or(
         th.abs(euler[..., 0]) > limit_euler_angle[0], 
         th.abs(euler[..., 1]) > limit_euler_angle[1])
@@ -1052,6 +1055,24 @@ class CommandsCfg:
     #     delta_yaw=30.
 
     # )
+    hands_pose = mdp.IKHandTrajCommandCfg(
+        class_type=mdp.IKHandTrajCommand,
+        asset_name="robot",
+        resampling_time_range=(2., 2.),
+        left_hand_body_name="left_palm_link",
+        right_hand_body_name="right_palm_link",
+        left_foot_body_name="left_ankle_roll_link",
+        right_foot_body_name="right_ankle_roll_link",
+        debug_vis=True,
+        ranges=mdp.IKHandTrajCommandCfg.Ranges(
+            r_range=(0.4, 0.4),
+            theta_range_right=(-np.pi/4, 0),
+            theta_range_left=(0, np.pi/4),
+            z_range=(0.8, 0.8),
+
+        ),
+    )
+
     global_hand_goal = mdp.GlobalHandPoseCommandCfg(
         class_type=mdp.GlobalPoseCommand,
         asset_name="robot",
@@ -1060,10 +1081,13 @@ class CommandsCfg:
         right_hand_body_name="right_palm_link",
         left_foot_body_name="left_ankle_roll_link",
         right_foot_body_name="right_ankle_roll_link",
-        debug_vis=True,
+        # debug_vis=True,
+        debug_vis=False,
         ranges=mdp.GlobalHandPoseCommandCfg.Ranges(
-            x_range=(-3, 3),
-            y_range=(-3, 3),
+            # x_range=(-3, 3),
+            # y_range=(-3, 3),
+            x_range=(0,0),
+            y_range=(0,0),
             # z_range=(0.3, 1.2),
             # z_range=(0.2, 0.6),
             # z_range=(0.2, 0.4),
