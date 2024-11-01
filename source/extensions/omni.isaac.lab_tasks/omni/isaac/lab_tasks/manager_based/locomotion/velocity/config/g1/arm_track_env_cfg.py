@@ -165,9 +165,17 @@ class ActionsCfg:
                         "right_wrist_.*",],
 
             body_name="right_hand_palm_link",
-            controller=DifferentialIKControllerCfg(command_type="pose",
-                                                   use_relative_mode=False,
-                                                   ik_method="dls"),
+            controller=DifferentialIKControllerCfg(
+                command_type="pose",
+                use_relative_mode=False,
+                ik_method="dls",
+                use_weighted_jacobian=True,
+                # use_weighted_jacobian=False,
+                weight_pos=[1.0, 1.0, 1.0, 1.0, 0., 0., 0.],
+                weight_ori=[0., 0., 0., 0., 1.0, 1.0, 1.0],
+                # weight_pos=[1.0, 1.0, 1.0, 1.0, 0.1, 0.1, 0.1],
+                # weight_ori=[0.1, 0.1, 0.1, 0.1, 1.0, 1.0, 1.0],
+                ),
             scale=1.0,
             compensate_gravity=True,
         )
@@ -507,15 +515,9 @@ class CommandsCfg:
         debug_vis=True,
         ranges=mdp.IKHandTrajCommandCfg.Ranges(
             r_range=(0.5, 0.6),
-            # r_range=(0.4, 0.5),
-            # r_range=(0.1, 0.5),
-            theta_range_right=(-np.pi/3, -np.pi/6),
-            # theta_range_right=(-np.pi/2, -np.pi/6),
-            # theta_range_right=(-np.pi/3, 0.),
+            theta_range_right=(-np.pi/3, 0.),
             theta_range_left=(0, np.pi/4),
-            z_range=(0.6, 1.0),
-            # z_range=(0.1, 0.5),
-            # z_range=(0.5, 1.0),
+            z_range=(0.1, 0.5),
 
         ),
     )

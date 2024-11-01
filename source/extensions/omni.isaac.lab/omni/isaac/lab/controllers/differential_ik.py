@@ -68,6 +68,9 @@ class DifferentialIKController:
         self.ee_quat_des = torch.zeros(self.num_envs, 4, device=self._device)
         # -- input command
         self._command = torch.zeros(self.num_envs, self.action_dim, device=self._device)
+        # Jacobian weights
+        self.weight_pos = torch.tensor(self.cfg.weight_pos, device=self._device)[None, None, ...]
+        self.weight_ori = torch.tensor(self.cfg.weight_ori, device=self._device)[None, None, ...]
 
     """
     Properties.
@@ -159,6 +162,17 @@ class DifferentialIKController:
         Returns:
             The target joint positions commands in shape (N, num_joints).
         """
+        if self.cfg.use_weighted_jacobian:
+            # Weighted dls
+            Jp = jacobian[:, 0:3, :]  # Position Jacobian: shape (N, 3, num_joints)
+            Jo = jacobian[:, 3:6, :]  # Orientation Jacobian: shape (N, 3, num_joints)
+
+            Jp_weighted = Jp * self.weight_pos
+            Jo_weighted = Jo * self.weight_ori
+
+            # Combine the weighted Jacobians back into a single Jacobian
+            jacobian = torch.cat([Jp_weighted, Jo_weighted], dim=1)
+
         # compute the delta in joint-space
         if "position" in self.cfg.command_type:
             position_error = self.ee_pos_des - ee_pos

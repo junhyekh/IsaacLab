@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 from dataclasses import MISSING
-from typing import Literal
+from typing import Literal, List
 
 from omni.isaac.lab.utils import configclass
 
@@ -49,6 +49,16 @@ class DifferentialIKControllerCfg:
     - Damped Moore-Penrose pseudo-inverse ("dls"):
         - "lambda_val": Damping coefficient (default: 0.01).
     """
+
+    use_weighted_jacobian: bool = False
+    """
+    If true, following weight will be multiplied to the each 
+    positional, rotational jacobian. By adjusting this value,
+    you can adjust the contribution of each joint when reaching
+    the IK target
+    """
+    weight_pos: List[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    weight_ori: List[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 
     def __post_init__(self):
         # check valid input
