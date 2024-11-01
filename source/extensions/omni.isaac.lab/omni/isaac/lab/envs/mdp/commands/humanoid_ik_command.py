@@ -425,11 +425,11 @@ class IKHandTrajCommand(CommandTerm):
     
     def _update_cylinder_frame(self):
 
-        self.cylinder_pos_w[..., :2] = self.robot.data.root_pos_w[..., :2]
-        self.cylinder_quat_w = math_utils.yaw_quat(self.robot.data.root_quat_w)
+        # self.cylinder_pos_w[..., :2] = self.robot.data.root_pos_w[..., :2]
+        # self.cylinder_quat_w = math_utils.yaw_quat(self.robot.data.root_quat_w)
 
-        # self.cylinder_pos_w = self.robot.data.body_state_w[:, self.torso_idx, :3]
-        # self.cylinder_quat_w = self.robot.data.body_state_w[:, self.torso_idx, 3:7]
+        self.cylinder_pos_w = self.robot.data.body_state_w[:, self.torso_idx, :3]
+        self.cylinder_quat_w = self.robot.data.body_state_w[:, self.torso_idx, 3:7]
 
 
 

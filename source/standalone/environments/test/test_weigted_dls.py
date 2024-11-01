@@ -25,16 +25,72 @@ simulation_app = app_launcher.app
 """Rest everything follows."""
 
 import torch as th 
+import numpy as np
 
 import omni.isaac.lab.sim as sim_utils
-from omni.isaac.lab.assets import RigidObjectCfg, AssetBaseCfg
+from omni.isaac.lab.assets import ArticulationCfg, AssetBaseCfg, Articulation, RigidObject
+from omni.isaac.lab.actuators import ImplicitActuatorCfg
 from omni.isaac.lab.scene import InteractiveScene, InteractiveSceneCfg
+from omni.isaac.lab.envs import ManagerBasedEnv, ManagerBasedEnvCfg
+from omni.isaac.lab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
+from omni.isaac.lab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 from omni.isaac.lab.sim import SimulationContext
 from omni.isaac.lab.utils import configclass
 from omni.isaac.lab.utils.math import convert_quat
-import omni.isaac.lab.envs.mdp as mdp
-from omni.isaac.lab_assets.g1_hand import G1_Dual_Arm_CFG
+# import omni.isaac.lab.envs.mdp as mdp
+import omni.isaac.lab_tasks.manager_based.locomotion.velocity.mdp as mdp
 
+
+G1_Dual_Arm_CFG = ArticulationCfg(
+    spawn=sim_utils.UsdFileCfg(
+        usd_path=f"source/extensions/omni.isaac.lab_assets/data/g1_dual_arm/g1.usd",
+        activate_contact_sensors=True,
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            disable_gravity=False,
+            retain_accelerations=False,
+            linear_damping=0.0,
+            angular_damping=0.0,
+            max_linear_velocity=1000.0,
+            max_angular_velocity=1000.0,
+            max_depenetration_velocity=1.0,
+        ),
+        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+            enabled_self_collisions=True, solver_position_iteration_count=8, solver_velocity_iteration_count=4
+        ),
+    ),
+    init_state=ArticulationCfg.InitialStateCfg(
+        pos=(0.0, 0.0, 0.74),
+        joint_pos={
+            "left_shoulder_roll_joint": 0.16,
+            "left_shoulder_pitch_joint": 0.35,
+            "right_shoulder_roll_joint": -0.16,
+            "right_shoulder_pitch_joint": 0.35,
+            ".*_wrist_.*": 0.
+        },
+        joint_vel={".*": 0.0},
+    ),
+    soft_joint_pos_limit_factor=1.,
+    actuators={
+        "arms": ImplicitActuatorCfg(
+            joint_names_expr=[
+                ".*_shoulder_pitch_joint",
+                ".*_shoulder_roll_joint",
+                ".*_shoulder_yaw_joint",
+                ".*_elbow_joint",
+                ".*_wrist_.*"
+            ],
+            effort_limit=100,
+            velocity_limit=100.0,
+            stiffness=40.0,
+            damping=10.0,
+            armature={
+                ".*_shoulder_.*": 0.01,
+                ".*_elbow_.*": 0.01,
+                ".*_wrist_.*": 0.01
+            },
+        ),
+    },
+)
 
 @configclass
 class SceneCfg(InteractiveSceneCfg):
@@ -52,72 +108,103 @@ class SceneCfg(InteractiveSceneCfg):
         prim_path="{ENV_REGEX_NS}/Robot"
     )
 
-def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
-    """Runs the simulation loop."""
-    # Extract scene entities
-    # note: we only do this here for readability.
-    # Define simulation stepping
-    sim_dt = sim.get_physics_dt()
-    robot = scene.articulations['robot']
-    
-    right_arm_bodies, body_names = robot.find_bodies("right_.*")
-    right_arm_joints, joint_names = robot.find_joints("right_.*_joint")
-    print(right_arm_bodies, body_names)
-    print(robot.num_bodies)
-    print(len(robot.find_bodies(".*")[0]))
-    count = 0
-    if args_cli.disable_gravity:
-        robot.set_disable_gravity(body_ids=right_arm_bodies,
-                                  env_ids=th.tensor([0,1]))
-        # robot.set_disable_gravity(env_ids=th.tensor([0,1]))
-        print(robot.root_physx_view.get_disable_gravities())
-    # Simulation loop
-    while simulation_app.is_running():
-        # Reset
-        if count % 200 == 0:
-            # reset counter
-            count = 0
-            default_joint_pos = robot.data.default_joint_pos
-            default_joint_vel = robot.data.default_joint_vel
-            # set into the physics simulation
-            robot.write_joint_state_to_sim(default_joint_pos, default_joint_vel)
-            #reset env 
-                
-            # clear internal buffers
-            scene.reset()
-            print("[INFO]: Resetting object state...")
-        # Apply random action
-        # -- write data to sim
-        robot.set_joint_position_target(robot.data.default_joint_pos)
+@configclass
+class ActionsCfg:
+    """Action specifications for the MDP."""
 
-        if args_cli.compensate_gravity:
-            robot.set_joint_gravity_compensation(joint_ids=right_arm_joints)
-        scene.write_data_to_sim()
-        # Perform step
-        sim.step()
-        # Increment counter
-        count += 1
-        # Update buffers
-        scene.update(sim_dt)
+    right_arm = mdp.PassiveIKActionCfg(
+            asset_name="robot",
+            command_name='hands_pose',
+            joint_names=["right_shoulder_pitch_joint",
+                        "right_shoulder_roll_joint",
+                        "right_shoulder_yaw_joint",
+                        "right_elbow_joint",
+                        "right_wrist_.*",],
+
+            # body_name="right_hand_palm_link",
+            body_name="right_rubber_hand",
+            controller=DifferentialIKControllerCfg(command_type="pose",
+                                                   use_relative_mode=False,
+                                                   ik_method="dls"),
+            scale=1.0,
+            compensate_gravity=True,
+        )
+
+@configclass
+class CommandsCfg:
+    hands_pose = mdp.IKHandTrajCommandCfg(
+        class_type=mdp.IKHandTrajCommand,
+        asset_name="robot",
+        resampling_time_range=(3., 3.),
+        left_hand_body_name="left_rubber_hand",
+        # right_hand_body_name="right_hand_palm_link",
+        right_hand_body_name="right_rubber_hand",
+        left_foot_body_name="left_rubber_hand",
+        right_foot_body_name="left_rubber_hand",
+        torso_body_name="torso_link",
+        debug_vis=True,
+        ranges=mdp.IKHandTrajCommandCfg.Ranges(
+            r_range=(0.5, 0.6),
+            theta_range_right=(-np.pi/2, 0.),
+            theta_range_left=(0, np.pi/4),
+            z_range=(0.2, 0.5),
+        ),
+    )
+
+@configclass
+class G1DualArmEnvCfg(ManagerBasedRLEnvCfg):
+    """Configuration for the locomotion velocity-tracking environment."""
+
+    # Scene settings
+    scene: SceneCfg = SceneCfg(num_envs=args_cli.num_envs, env_spacing=2.5)
+    # Basic settings
+    # observations: ObservationsCfg = ObservationsCfg()
+    actions: ActionsCfg = ActionsCfg()
+    commands: CommandsCfg = CommandsCfg()
+
+
+    def __post_init__(self):
+        """Post initialization."""
+        # general settings
+        self.decimation = 4
+        self.episode_length_s = 20.
+        # self.episode_length_s = 3.
+        # self.episode_length_s = 8.
+        # simulation settings
+        self.sim.dt = 0.005
+        self.sim.render_interval = self.decimation
+        self.sim.disable_contact_processing = True
 
 
 def main():
     """Main function."""
-    # Load kit helper
-    sim_cfg = sim_utils.SimulationCfg(device=args_cli.device)
-    sim = SimulationContext(sim_cfg)
-    # Set main camera
-    sim.set_camera_view([2.5, 0.0, 4.0], [0.0, 0.0, 2.0])
-    # Design scene
-    scene_cfg = SceneCfg(num_envs=args_cli.num_envs, env_spacing=1.5)
-    scene = InteractiveScene(scene_cfg)
-    # Play the simulator
-    sim.reset()
+    # setup base environment
+    env_cfg = G1DualArmEnvCfg()
+    env = ManagerBasedRLEnv(cfg=env_cfg)
 
-    # Now we are ready!
-    print("[INFO]: Setup complete...")
-    # Run the simulator
-    run_simulator(sim, scene)
+
+    # simulate physics
+    count = 0
+    obs, _ = env.reset()
+    while simulation_app.is_running():
+        with th.inference_mode():
+            # reset
+            if count % 1000 == 0:
+                obs, _ = env.reset()
+                count = 0
+                print("-" * 80)
+                print("[INFO]: Resetting environment...")
+            # infer action
+            action = th.zeros((env.num_envs, 0), device=env.device)
+
+            # step env
+            # obs, _ = env.step(action)
+            env.step(action)
+            # update counter
+            count += 1
+
+    # close the environment
+    env.close()
 
 
 if __name__ == "__main__":
