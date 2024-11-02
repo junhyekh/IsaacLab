@@ -114,7 +114,7 @@ def base_height_l2(
 def body_lin_acc_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     """Penalize the linear acceleration of bodies using L2-kernel."""
     asset: Articulation = env.scene[asset_cfg.name]
-    return torch.sum(torch.norm(asset.data.body_lin_acc_w[:, asset_cfg.body_ids, :], dim=-1), dim=1)
+    return torch.sum(torch.square(asset.data.body_lin_acc_w[:, asset_cfg.body_ids, :]).sum(-1), dim=1)
 
 
 """

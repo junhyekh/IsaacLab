@@ -351,6 +351,7 @@ class IKHandTrajCommand(CommandTerm):
         self.curr_command_s_left = self.next_command_s_left.clone()
         self.curr_command_s_right = self.next_command_s_right.clone()
 
+        reset_envs = th.where(self.command_counter == 1)
 
         self._update_cylinder_frame()
 
@@ -369,11 +370,10 @@ class IKHandTrajCommand(CommandTerm):
                 self.robot.data.body_state_w[:, self.right_hand_idx, :3],
                 self.robot.data.body_state_w[:, self.right_hand_idx, 3:7],
         )
-
-        self.curr_command_s_left = \
-            th.cat((curr_hand_s_left_pos, curr_hand_s_left_quat), dim=-1)
-        self.curr_command_s_right = \
-            th.cat((curr_hand_s_right_pos, curr_hand_s_right_quat), dim=-1)
+        self.curr_command_s_left[reset_envs] = \
+            th.cat((curr_hand_s_left_pos[reset_envs], curr_hand_s_left_quat[reset_envs]), dim=-1)
+        self.curr_command_s_right[reset_envs] = \
+            th.cat((curr_hand_s_right_pos[reset_envs], curr_hand_s_right_quat[reset_envs]), dim=-1)
 
         next_pos_s_left = th.zeros((num_envs, 3), device=device)
         next_pos_s_left[..., 0] = th.empty(num_envs, device=device).uniform_(

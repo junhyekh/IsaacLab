@@ -169,12 +169,13 @@ class ActionsCfg:
                 command_type="pose",
                 use_relative_mode=False,
                 ik_method="dls",
+                ik_params={"lambda_val": 0.1},
                 use_weighted_jacobian=True,
                 # use_weighted_jacobian=False,
-                weight_pos=[1.0, 1.0, 1.0, 1.0, 0., 0., 0.],
+                # weight_pos=[1.0, 1.0, 1.0, 1.0, 0., 0., 0.],
+                weight_pos=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
                 weight_ori=[0., 0., 0., 0., 1.0, 1.0, 1.0],
-                # weight_pos=[1.0, 1.0, 1.0, 1.0, 0.1, 0.1, 0.1],
-                # weight_ori=[0.1, 0.1, 0.1, 0.1, 1.0, 1.0, 1.0],
+                # weight_ori=[0., 0., 0., 0., 0., 0., 0.],
                 ),
             scale=1.0,
             compensate_gravity=True,
@@ -297,6 +298,34 @@ class EventCfg:
         mode="interval",
         interval_range_s=(3.0, 3.0),
         params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}},
+    )
+
+    # elbow joint limit
+    robot_joint_limits_elbow = EventTerm(
+        func=mdp.randomize_joint_parameters,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot", 
+                joint_names="right_elbow_joint"),
+            "lower_limit_distribution_params": (-1., -1.),
+            "upper_limit_distribution_params": (1.5, 1.5),
+            "operation": "abs",
+            "distribution": "uniform",
+        },
+    )
+    robot_joint_limits_shoulder = EventTerm(
+        func=mdp.randomize_joint_parameters,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot", 
+                joint_names="right_shoulder_yaw_joint"),
+            "lower_limit_distribution_params": (-0.5, -0.5),
+            "upper_limit_distribution_params": (2.6, 2.6),
+            "operation": "abs",
+            "distribution": "uniform",
+        },
     )
 
 
@@ -454,6 +483,21 @@ class G1Rewards:
     #     weight=5000.,
     #     params={"num_success": 100, "command_name": "global_hand_goal"}
     # )
+    torso_acc_l2 = RewTerm(
+        func=mdp.body_lin_acc_l2,
+        weight=-0.002,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names="torso_link"),
+        }
+    )
+    feet_slide = RewTerm(
+        func=mdp.feet_slide,
+        weight=-0.5,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_ankle_roll_link"),
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*_ankle_roll_link"),
+        },
+    )
 
 
 @configclass
@@ -514,10 +558,13 @@ class CommandsCfg:
         torso_body_name="torso_link",
         debug_vis=True,
         ranges=mdp.IKHandTrajCommandCfg.Ranges(
-            r_range=(0.5, 0.6),
+            # r_range=(0.5, 0.6),
+            # r_range=(0.2, 0.6),
+            r_range=(0.3, 0.6),
             theta_range_right=(-np.pi/3, 0.),
             theta_range_left=(0, np.pi/4),
             z_range=(0.1, 0.5),
+            # z_range=(0.6, 1.0),
 
         ),
     )

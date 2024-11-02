@@ -31,6 +31,8 @@ import omni.isaac.lab.sim as sim_utils
 from omni.isaac.lab.assets import ArticulationCfg, AssetBaseCfg, Articulation, RigidObject
 from omni.isaac.lab.actuators import ImplicitActuatorCfg
 from omni.isaac.lab.scene import InteractiveScene, InteractiveSceneCfg
+from omni.isaac.lab.managers import SceneEntityCfg
+from omni.isaac.lab.managers import EventTermCfg as EventTerm
 from omni.isaac.lab.envs import ManagerBasedEnv, ManagerBasedEnvCfg
 from omni.isaac.lab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from omni.isaac.lab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
@@ -127,10 +129,13 @@ class ActionsCfg:
                 command_type="pose",
                 use_relative_mode=False,
                 ik_method="dls",
+                ik_params={"lambda_val": 0.1},
                 use_weighted_jacobian=True,
                 # use_weighted_jacobian=False,
                 weight_pos=[1.0, 1.0, 1.0, 1.0, 0., 0., 0.],
+                # weight_pos=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
                 weight_ori=[0., 0., 0., 0., 1.0, 1.0, 1.0],
+                # weight_ori=[0., 0., 0., 0., 0., 0., 0.],
                 ),
             scale=1.0,
             compensate_gravity=True,
@@ -150,11 +155,44 @@ class CommandsCfg:
         torso_body_name="torso_link",
         debug_vis=True,
         ranges=mdp.IKHandTrajCommandCfg.Ranges(
-            r_range=(0.5, 0.6),
+            # r_range=(0.5, 0.6),
+            r_range=(0.3, 0.6),
             theta_range_right=(-np.pi/3, 0.),
             theta_range_left=(0, np.pi/4),
             z_range=(0.1, 0.5),
         ),
+    )
+
+
+@configclass
+class EventCfg:
+    """Configuration for events."""
+    # elbow joint limit
+    robot_joint_limits_elbow = EventTerm(
+        func=mdp.randomize_joint_parameters,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot", 
+                joint_names="right_elbow_joint"),
+            "lower_limit_distribution_params": (-1., -1.),
+            "upper_limit_distribution_params": (1.5, 1.5),
+            "operation": "abs",
+            "distribution": "uniform",
+        },
+    )
+    robot_joint_limits_shoulder = EventTerm(
+        func=mdp.randomize_joint_parameters,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot", 
+                joint_names="right_shoulder_yaw_joint"),
+            "lower_limit_distribution_params": (-0.5, -0.5),
+            "upper_limit_distribution_params": (2.6, 2.6),
+            "operation": "abs",
+            "distribution": "uniform",
+        },
     )
 
 @configclass
@@ -167,6 +205,7 @@ class G1DualArmEnvCfg(ManagerBasedRLEnvCfg):
     # observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
     commands: CommandsCfg = CommandsCfg()
+    events: EventCfg = EventCfg()
 
 
     def __post_init__(self):
