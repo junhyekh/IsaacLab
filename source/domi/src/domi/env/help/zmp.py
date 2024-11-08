@@ -96,15 +96,23 @@ def process_contact_data(
 
     return forces, points, valid_masks
 
-def compute_com(asset: Articulation, device: str) -> th.Tensor:
+def compute_com(
+        asset: Articulation, 
+        device: str,
+        body_ids = None
+        ) -> th.Tensor:
     """
     Returns the COM in the world frame given the articulation
     assets.
     """
-    # link_com_pose_b = asset.data.root_physx_view.get_coms().to(device)
     link_com_pose_b = asset.root_physx_view.get_coms().clone().to(device)
     link_pose = asset.root_physx_view.get_link_transforms().clone()
     link_mass = asset.data.default_mass.clone().to(device)
+
+    if body_ids is not None:
+        link_com_pose_b = link_com_pose_b[:, body_ids, :]
+        link_pose = link_pose[:, body_ids, :]
+        link_mass = link_mass[:, body_ids]
 
 
     link_com_pos_w, link_com_quat_w = math_utils.combine_frame_transforms(
@@ -654,3 +662,73 @@ def compute_lin_ang_momentum(
     angmom_tot = th.sum(angmom_rel, dim=-2)
     
     return linmom_tot, angmom_tot
+
+def compute_rel_lin_ang_momentum(
+        asset: Articulation,
+        body_ids,
+        frame_state_w: th.Tensor
+    ) -> Tuple[th.Tensor, th.Tensor]:
+    '''
+    Compute the linear and angular momentum of the articulated system.
+    
+    Args:
+    - asset: Articulation
+    - frame_state_w: [N, 13]
+
+    Returns:
+    - linear_momentum: [N, 3] -> measured in the base frame
+    - angular_momentum: [N, 3] -> measured in the base frame    NOTE(ytcho): 
+        - Link pose(root_physx_view.get_link.transforms()):
+            This value is the (position, quaternion) of the body
+            link frame relative to the world frame
+        - Link velocities(self._root_physx_view.get_link_velocities()):
+            This value is the (lin_vel, ang_vel) of the link **center
+            of mass frame**, which is not the link frame. Center of
+            mass frame is assumed to be the same orientation as the
+            link frame, not the principal axis of the link inertia.
+    '''
+    link_com_pose_b = asset.root_physx_view.get_coms(
+        ).clone().to(asset.device)[:, body_ids, :]
+    link_pose = asset.root_physx_view.get_link_transforms().clone()[:, body_ids, :]
+    link_mass = asset.data.default_mass.clone().to(asset.device)[:, body_ids]
+    N, _ = link_mass.shape
+    # Inertia measured in the COM frame of each link
+    link_inertia_b = asset.data.default_inertia.clone().to(
+        asset.device).view(N, -1, 3, 3)[:, body_ids, :, :]
+
+    link_com_pos_w, link_com_quat_w = math_utils.combine_frame_transforms(
+        link_pose[..., :3],
+        xyzw2wxyz(link_pose[..., 3:7]),
+        link_com_pose_b[..., :3],
+        xyzw2wxyz(link_com_pose_b[..., 3:7]),
+    )
+    # This is [lin, ang] velocities of the link COM
+    link_velocities_w = asset.root_physx_view.get_link_velocities()[:, body_ids, :]
+
+    rel_velocities_w = link_velocities_w - frame_state_w[:, None, 7:13]
+
+    linmom_w = link_mass[..., None] * rel_velocities_w[..., :3]
+
+    link_com_pos_rel = link_com_pos_w - frame_state_w[..., None, 0:3]
+    link_com_rot_w = math_utils.matrix_from_quat(link_com_quat_w)
+    link_inertia_w = th.einsum(
+        '...ik,...kl,...jl->...ij', 
+        link_com_rot_w, 
+        link_inertia_b, 
+        link_com_rot_w)  # [N, B, 3, 3]
+
+    angmom_rel = \
+        th.cross(link_com_pos_rel, linmom_w, dim=-1) + \
+        th.einsum('...ij,...j->...i', link_inertia_w, rel_velocities_w[..., 3:6])
+    
+    linmom_tot = th.sum(linmom_w, dim=-2)
+    angmom_tot = th.sum(angmom_rel, dim=-2)
+
+    linmom_tot_f = math_utils.quat_rotate_inverse(
+        frame_state_w[..., 3:7], linmom_tot
+    )
+    angmom_tot_f = math_utils.quat_rotate_inverse(
+        frame_state_w[..., 3:7], angmom_tot
+    )
+    
+    return linmom_tot_f, angmom_tot_f

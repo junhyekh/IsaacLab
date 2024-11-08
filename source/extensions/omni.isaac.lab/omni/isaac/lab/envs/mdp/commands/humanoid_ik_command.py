@@ -177,6 +177,9 @@ class IKHandTrajCommandCfg(CommandTermCfg):
     torso_body_name: str = MISSING
 
     make_quat_unique: bool = False
+
+    mode: Literal["cylinder", "cart"] = MISSING
+    moving_time: float = MISSING
     """Whether to make the quaternion unique or not. Defaults to False.
 
     If True, the quaternion is made unique by ensuring the real part is positive.
@@ -188,6 +191,11 @@ class IKHandTrajCommandCfg(CommandTermCfg):
         r_range: tuple[float, float] = MISSING  # min, max [m]
         theta_range_left: tuple[float, float] = MISSING  # min, max [rad]
         theta_range_right: tuple[float, float] = MISSING  # min, max [rad]
+        # Ranges for cartesian coord sampling
+        y_left_range: tuple[float, float] = MISSING  # min, max [m]
+        y_right_range: tuple[float, float] = MISSING  # min, max [m]
+        x_range: tuple[float, float] = MISSING  # min, max [m]
+
         z_range: tuple[float, float] = MISSING  # min, max [m]
     
     ranges: Ranges = MISSING
@@ -318,7 +326,7 @@ class IKHandTrajCommand(CommandTerm):
     """
 
     def _update_metrics(self):
-        self._update_command()
+        # self._update_command()
 
         # Compute the error for left hand
         pos_error_left, rot_error_left = math_utils.compute_pose_error(
@@ -348,90 +356,163 @@ class IKHandTrajCommand(CommandTerm):
         device = self.device
         num_envs = len(env_ids)
 
-        self.curr_command_s_left = self.next_command_s_left.clone()
-        self.curr_command_s_right = self.next_command_s_right.clone()
+        self.curr_command_s_left[env_ids] = self.next_command_s_left[env_ids].clone()
+        self.curr_command_s_right[env_ids] = self.next_command_s_right[env_ids].clone()
 
         reset_envs = th.where(self.command_counter == 1)
 
         self._update_cylinder_frame()
 
 
-        curr_hand_s_left_pos, curr_hand_s_left_quat =\
-            math_utils.subtract_frame_transforms(
-                self.cylinder_pos_w,
-                self.cylinder_quat_w,
-                self.robot.data.body_state_w[:, self.left_hand_idx, :3],
-                self.robot.data.body_state_w[:, self.left_hand_idx, 3:7],
-        )
-        curr_hand_s_right_pos, curr_hand_s_right_quat =\
-            math_utils.subtract_frame_transforms(
-                self.cylinder_pos_w,
-                self.cylinder_quat_w,
-                self.robot.data.body_state_w[:, self.right_hand_idx, :3],
-                self.robot.data.body_state_w[:, self.right_hand_idx, 3:7],
-        )
-        self.curr_command_s_left[reset_envs] = \
-            th.cat((curr_hand_s_left_pos[reset_envs], curr_hand_s_left_quat[reset_envs]), dim=-1)
-        self.curr_command_s_right[reset_envs] = \
-            th.cat((curr_hand_s_right_pos[reset_envs], curr_hand_s_right_quat[reset_envs]), dim=-1)
+        # curr_hand_s_left_pos, curr_hand_s_left_quat =\
+        #     math_utils.subtract_frame_transforms(
+        #         self.cylinder_pos_w,
+        #         self.cylinder_quat_w,
+        #         self.robot.data.body_state_w[:, self.left_hand_idx, :3],
+        #         self.robot.data.body_state_w[:, self.left_hand_idx, 3:7],
+        # )
+        # curr_hand_s_right_pos, curr_hand_s_right_quat =\
+        #     math_utils.subtract_frame_transforms(
+        #         self.cylinder_pos_w,
+        #         self.cylinder_quat_w,
+        #         self.robot.data.body_state_w[:, self.right_hand_idx, :3],
+        #         self.robot.data.body_state_w[:, self.right_hand_idx, 3:7],
+        # )
+        # self.curr_command_s_left[reset_envs] = \
+        #     th.cat((curr_hand_s_left_pos[reset_envs], curr_hand_s_left_quat[reset_envs]), dim=-1)
+        # self.curr_command_s_right[reset_envs] = \
+        #     th.cat((curr_hand_s_right_pos[reset_envs], curr_hand_s_right_quat[reset_envs]), dim=-1)
+        reset_envs = reset_envs[0]
+        self.curr_command_s_left[reset_envs, 0] = 0.3
+        self.curr_command_s_left[reset_envs, 1] = 0.3
+        self.curr_command_s_left[reset_envs, 2] = 0.6
+        self.curr_command_s_right[reset_envs, 0] = 0.3
+        self.curr_command_s_right[reset_envs, 1] = -0.3
+        self.curr_command_s_right[reset_envs, 2] = 0.6
 
-        next_pos_s_left = th.zeros((num_envs, 3), device=device)
-        next_pos_s_left[..., 0] = th.empty(num_envs, device=device).uniform_(
-            *self.cfg.ranges.r_range)
-        next_pos_s_left[..., 1] = th.empty(num_envs, device=device).uniform_(
-            *self.cfg.ranges.theta_range_left)
-        next_pos_s_left[..., 2] = th.empty(num_envs, device=device).uniform_(
-            *self.cfg.ranges.z_range)
-
-
-        self.next_command_s_left[env_ids, :3]= cylinder2cart(next_pos_s_left)
-        next_euler_s_left = th.zeros((num_envs, 3), device=device)
-        next_euler_s_left[..., 2] = next_pos_s_left[..., 1]
-
-        noise_left = th.empty((num_envs, 3), device=device).uniform_(
-            -np.pi * self.cfg.angle_noise/180., 
-            -np.pi * self.cfg.angle_noise/180.)
-        next_euler_s_left = math_utils.wrap_to_pi(next_euler_s_left+noise_left)
-
-        self.next_command_s_left[env_ids, 3:7] = math_utils.quat_from_euler_xyz(
-            next_euler_s_left[..., 0],
-            next_euler_s_left[..., 1],
-            next_euler_s_left[..., 2],
-        )
-
-        next_pos_s_right = th.zeros((num_envs, 3), device=device)
-        next_pos_s_right[..., 0] = th.empty(num_envs, device=device).uniform_(
-            *self.cfg.ranges.r_range)
-        next_pos_s_right[..., 1] = th.empty(num_envs, device=device).uniform_(
-            *self.cfg.ranges.theta_range_right)
-        next_pos_s_right[..., 2] = th.empty(num_envs, device=device).uniform_(
-            *self.cfg.ranges.z_range)
+        if self.cfg.mode == "cylinder":
+            next_pos_s_left = th.zeros((num_envs, 3), device=device)
+            next_pos_s_left[..., 0] = th.empty(num_envs, device=device).uniform_(
+                *self.cfg.ranges.y_left_range)
+            next_pos_s_left[..., 1] = th.empty(num_envs, device=device).uniform_(
+                *self.cfg.ranges.x_range)
+            next_pos_s_left[..., 2] = th.empty(num_envs, device=device).uniform_(
+                *self.cfg.ranges.z_range)
 
 
-        self.next_command_s_right[env_ids, :3]= cylinder2cart(next_pos_s_right)
-        next_euler_s_right = th.zeros((num_envs, 3), device=device)
-        next_euler_s_right[..., 2] = next_pos_s_right[..., 1]
+            self.next_command_s_left[env_ids, :3]= cylinder2cart(next_pos_s_left)
+            next_euler_s_left = th.zeros((num_envs, 3), device=device)
+            next_euler_s_left[..., 2] = next_pos_s_left[..., 1]
 
-        noise_right = th.empty((num_envs, 3), device=device).uniform_(
-            -np.pi * self.cfg.angle_noise/180., 
-            -np.pi * self.cfg.angle_noise/180.)
-        next_euler_s_right = math_utils.wrap_to_pi(next_euler_s_right+noise_right)
+            noise_left = th.empty((num_envs, 3), device=device).uniform_(
+                -np.pi * self.cfg.angle_noise/180., 
+                -np.pi * self.cfg.angle_noise/180.)
+            next_euler_s_left = math_utils.wrap_to_pi(next_euler_s_left+noise_left)
 
-        self.next_command_s_right[env_ids, 3:7] = math_utils.quat_from_euler_xyz(
-            next_euler_s_right[..., 0],
-            next_euler_s_right[..., 1],
-            next_euler_s_right[..., 2],
-        )
+            self.next_command_s_left[env_ids, 3:7] = math_utils.quat_from_euler_xyz(
+                next_euler_s_left[..., 0],
+                next_euler_s_left[..., 1],
+                next_euler_s_left[..., 2],
+            )
+
+            next_pos_s_right = th.zeros((num_envs, 3), device=device)
+            next_pos_s_right[..., 0] = th.empty(num_envs, device=device).uniform_(
+                *self.cfg.ranges.r_range)
+            next_pos_s_right[..., 1] = th.empty(num_envs, device=device).uniform_(
+                *self.cfg.ranges.theta_range_right)
+            next_pos_s_right[..., 2] = th.empty(num_envs, device=device).uniform_(
+                *self.cfg.ranges.z_range)
+
+
+            self.next_command_s_right[env_ids, :3]= cylinder2cart(next_pos_s_right)
+            next_euler_s_right = th.zeros((num_envs, 3), device=device)
+            next_euler_s_right[..., 2] = next_pos_s_right[..., 1]
+
+            noise_right = th.empty((num_envs, 3), device=device).uniform_(
+                -np.pi * self.cfg.angle_noise/180., 
+                -np.pi * self.cfg.angle_noise/180.)
+            next_euler_s_right = math_utils.wrap_to_pi(next_euler_s_right+noise_right)
+
+            self.next_command_s_right[env_ids, 3:7] = math_utils.quat_from_euler_xyz(
+                next_euler_s_right[..., 0],
+                next_euler_s_right[..., 1],
+                next_euler_s_right[..., 2],
+            )
+        elif self.cfg.mode == "cart":
+            next_pos_s_left = th.zeros((num_envs, 3), device=device)
+            next_pos_s_left[..., 0] = th.empty(num_envs, device=device).uniform_(
+                *self.cfg.ranges.x_range)
+            next_pos_s_left[..., 1] = th.empty(num_envs, device=device).uniform_(
+                *self.cfg.ranges.y_left_range)
+            next_pos_s_left[..., 2] = th.empty(num_envs, device=device).uniform_(
+                *self.cfg.ranges.z_range)
+
+            self.next_command_s_left[env_ids, :3]= next_pos_s_left
+
+            next_euler_s_left = th.zeros((num_envs, 3), device=device)
+
+            noise_left = th.empty((num_envs, 3), device=device).uniform_(
+                -np.pi * self.cfg.angle_noise/180., 
+                -np.pi * self.cfg.angle_noise/180.)
+            next_euler_s_left = math_utils.wrap_to_pi(next_euler_s_left+noise_left)
+
+            self.next_command_s_left[env_ids, 3:7] = math_utils.quat_from_euler_xyz(
+                next_euler_s_left[..., 0],
+                next_euler_s_left[..., 1],
+                next_euler_s_left[..., 2],
+            )
+
+            next_pos_s_right = th.zeros((num_envs, 3), device=device)
+            next_pos_s_right[..., 0] = th.empty(num_envs, device=device).uniform_(
+                *self.cfg.ranges.x_range)
+            next_pos_s_right[..., 1] = th.empty(num_envs, device=device).uniform_(
+                *self.cfg.ranges.y_right_range)
+            next_pos_s_right[..., 2] = th.empty(num_envs, device=device).uniform_(
+                *self.cfg.ranges.z_range)
+
+            self.next_command_s_right[env_ids, :3]= next_pos_s_right
+
+            next_euler_s_right = th.zeros((num_envs, 3), device=device)
+
+            noise_right = th.empty((num_envs, 3), device=device).uniform_(
+                -np.pi * self.cfg.angle_noise/180., 
+                -np.pi * self.cfg.angle_noise/180.)
+            next_euler_s_right = math_utils.wrap_to_pi(next_euler_s_right+noise_right)
+
+            self.next_command_s_right[env_ids, 3:7] = math_utils.quat_from_euler_xyz(
+                next_euler_s_right[..., 0],
+                next_euler_s_right[..., 1],
+                next_euler_s_right[..., 2],
+            )
     
     def _update_cylinder_frame(self):
 
         # self.cylinder_pos_w[..., :2] = self.robot.data.root_pos_w[..., :2]
         # self.cylinder_quat_w = math_utils.yaw_quat(self.robot.data.root_quat_w)
 
-        self.cylinder_pos_w = self.robot.data.body_state_w[:, self.torso_idx, :3]
-        self.cylinder_quat_w = self.robot.data.body_state_w[:, self.torso_idx, 3:7]
+        # self.cylinder_pos_w[..., :2] = self.robot.data.body_state_w[:, self.torso_idx, :2]
+        # self.cylinder_quat_w = math_utils.yaw_quat(self.robot.data.body_state_w[:, self.torso_idx, 3:7])
 
+        # self.cylinder_pos_w = self.robot.data.body_state_w[:, self.torso_idx, :3]
+        # self.cylinder_quat_w = self.robot.data.body_state_w[:, self.torso_idx, 3:7]
 
+        self.cylinder_pos_w[..., :2] = 0.5 * (
+            self.robot.data.body_state_w[:, self.left_foot_idx, :2] +
+            self.robot.data.body_state_w[:, self.right_foot_idx, :2]
+            )
+        
+        _, _, left_euler = math_utils.euler_xyz_from_quat(
+            self.robot.data.body_state_w[:, self.left_foot_idx, 3:7]
+        )
+        _, _, right_euler = math_utils.euler_xyz_from_quat(
+            self.robot.data.body_state_w[:, self.right_foot_idx, 3:7]
+        )
+        
+        self.cylinder_quat_w = math_utils.quat_from_euler_xyz(
+            th.zeros_like(left_euler),
+            th.zeros_like(left_euler),
+            0.5*(left_euler + right_euler)
+        )
 
     def _update_command(self):
         '''
@@ -442,7 +523,11 @@ class IKHandTrajCommand(CommandTerm):
 
         self._update_cylinder_frame()
 
-        interpolation = 1. - (self.time_left/self.resampling_time)
+        # interpolation = 1. - (self.time_left/self.resampling_time)
+        interpolation = (1. - (self.time_left/self.cfg.moving_time)).clip(
+            min=0., max=1.
+        )
+
         self.lerp_command_s_left = interpolate_pose(
             self.curr_command_s_left,
             self.next_command_s_left,
@@ -499,7 +584,7 @@ class IKHandTrajCommand(CommandTerm):
         # Check if robot is initialized
         if not self.robot.is_initialized:
             return
-        self._update_command()
+        # self._update_command()
         # self.goal_pose_visualizer_left.visualize(
         #     self.lerp_command_w_left[:, :3], self.lerp_command_w_left[:, 3:]
         # )

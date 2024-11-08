@@ -288,7 +288,9 @@ def energy(
     ) -> th.Tensor:
     asset: Articulation = env.scene[asset_cfg.name]
 
-    energy = th.clip(asset.data.joint_vel * asset.data.applied_torque, min=0)
+    energy = th.clip(
+        asset.data.joint_vel[:, asset_cfg.joint_ids] *\
+        asset.data.applied_torque[:, asset_cfg.joint_ids], min=0)
 
     if "Energy" not in env.reward_manager.episode_stat_sums.keys():
         env.reward_manager.episode_stat_sums["Energy"] = \
@@ -379,6 +381,39 @@ def foot_pose_in_robot_root_frame(
         dim=-1)
     
     return foot_pose_b
+
+def hand_pose_in_robot_root_frame(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    left_hand_cfg: SceneEntityCfg = SceneEntityCfg("robot", body_names="left_hand_palm_link"),
+    right_hand_cfg: SceneEntityCfg = SceneEntityCfg("robot", body_names="right_hand_palm_link"),
+) -> th.Tensor:
+    """The position of the object in the robot's root frame."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    left_hand_ids = asset.find_bodies(left_hand_cfg.body_names)[0][0]
+    right_hand_ids = asset.find_bodies(right_hand_cfg.body_names)[0][0]
+    hand_pos_left_b, hand_quat_left_b = math_utils.subtract_frame_transforms(
+        asset.data.root_pos_w,
+        asset.data.root_quat_w,
+        asset.data.body_state_w[:, left_hand_ids, :3],
+        asset.data.body_state_w[:, left_hand_ids, 3:7],
+    )
+    hand_pos_right_b, hand_quat_right_b = math_utils.subtract_frame_transforms(
+        asset.data.root_pos_w,
+        asset.data.root_quat_w,
+        asset.data.body_state_w[:, right_hand_ids, :3],
+        asset.data.body_state_w[:, right_hand_ids, 3:7],
+    )
+    hand_axa_left_b = math_utils.wrap_to_pi(
+        math_utils.axis_angle_from_quat(hand_quat_left_b))
+    hand_axa_right_b = math_utils.wrap_to_pi(
+        math_utils.axis_angle_from_quat(hand_quat_right_b))
+    
+    hand_pose_b = th.cat(
+        (hand_pos_left_b, hand_pos_right_b, hand_axa_left_b, hand_axa_right_b),
+        dim=-1)
+    
+    return hand_pose_b
 
 def position_command_error(
         env: ManagerBasedRLEnv, 
