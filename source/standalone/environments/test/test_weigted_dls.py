@@ -117,7 +117,8 @@ class ActionsCfg:
     right_arm = mdp.PassiveIKActionCfg(
             asset_name="robot",
             command_name='hands_pose',
-            joint_names=["right_shoulder_pitch_joint",
+            joint_names=[
+                        "right_shoulder_pitch_joint",
                         "right_shoulder_roll_joint",
                         "right_shoulder_yaw_joint",
                         "right_elbow_joint",
@@ -130,8 +131,8 @@ class ActionsCfg:
                 use_relative_mode=False,
                 ik_method="dls",
                 ik_params={"lambda_val": 0.1},
-                use_weighted_jacobian=True,
-                # use_weighted_jacobian=False,
+                # use_weighted_jacobian=True,
+                use_weighted_jacobian=False,
                 weight_pos=[1.0, 1.0, 1.0, 1.0, 0., 0., 0.],
                 # weight_pos=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
                 weight_ori=[0., 0., 0., 0., 1.0, 1.0, 1.0],
@@ -147,12 +148,15 @@ class CommandsCfg:
         class_type=mdp.IKHandTrajCommand,
         asset_name="robot",
         resampling_time_range=(3., 3.),
+        moving_time=3.,
+        mode="cart",
         left_hand_body_name="left_rubber_hand",
         # right_hand_body_name="right_hand_palm_link",
         right_hand_body_name="right_rubber_hand",
         left_foot_body_name="left_rubber_hand",
         right_foot_body_name="left_rubber_hand",
         torso_body_name="torso_link",
+        frame="torso",
         debug_vis=True,
         ranges=mdp.IKHandTrajCommandCfg.Ranges(
             # r_range=(0.5, 0.6),
@@ -160,6 +164,9 @@ class CommandsCfg:
             theta_range_right=(-np.pi/3, 0.),
             theta_range_left=(0, np.pi/4),
             z_range=(0.1, 0.5),
+            x_range=(0.15, 0.5),
+            y_left_range=(0., 0.45),
+            y_right_range=(-0.45, 0.),
         ),
     )
 

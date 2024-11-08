@@ -96,7 +96,7 @@ def zmp_supp_dist_v2(
     rew = (th.exp(sigma * -th.clip(signed_zmp_dist, max=0))-1)
     return rew
 
-def arm_joint_limits(
+def approaching_pose(
         env: ManagerBasedRLEnv, 
         asset_cfg: SceneEntityCfg,
         command_name: str,
@@ -212,7 +212,6 @@ def relative_arm_mom(
     )
     arm_com_b = math_utils.quat_rotate_inverse(
         asset.data.root_quat_w, arm_com_w-asset.data.root_pos_w)
-    ic(arm_com_b)
     return th.cat([rel_lin_mom, rel_ang_mom], dim=-1)
 
 def relative_arm_com(
@@ -767,7 +766,7 @@ class G1Rewards:
         },
     )
     approaching = RewTerm(
-        func=arm_joint_limits,
+        func=approaching_pose,
         weight=0.,
         params={
             "asset_cfg": SceneEntityCfg(
@@ -853,6 +852,7 @@ class CommandsCfg:
         debug_vis=True,
         # mode="cylinder",
         mode="cart",
+        frame="foot",
         ranges=mdp.IKHandTrajCommandCfg.Ranges(
             # r_range=(0.5, 0.6),
             # r_range=(0.2, 0.6),

@@ -179,6 +179,7 @@ class IKHandTrajCommandCfg(CommandTermCfg):
     make_quat_unique: bool = False
 
     mode: Literal["cylinder", "cart"] = MISSING
+    frame: Literal["torso", "z-inv", "foot"] = MISSING
     moving_time: float = MISSING
     """Whether to make the quaternion unique or not. Defaults to False.
 
@@ -486,33 +487,30 @@ class IKHandTrajCommand(CommandTerm):
             )
     
     def _update_cylinder_frame(self):
-
-        # self.cylinder_pos_w[..., :2] = self.robot.data.root_pos_w[..., :2]
-        # self.cylinder_quat_w = math_utils.yaw_quat(self.robot.data.root_quat_w)
-
-        # self.cylinder_pos_w[..., :2] = self.robot.data.body_state_w[:, self.torso_idx, :2]
-        # self.cylinder_quat_w = math_utils.yaw_quat(self.robot.data.body_state_w[:, self.torso_idx, 3:7])
-
-        # self.cylinder_pos_w = self.robot.data.body_state_w[:, self.torso_idx, :3]
-        # self.cylinder_quat_w = self.robot.data.body_state_w[:, self.torso_idx, 3:7]
-
-        self.cylinder_pos_w[..., :2] = 0.5 * (
-            self.robot.data.body_state_w[:, self.left_foot_idx, :2] +
-            self.robot.data.body_state_w[:, self.right_foot_idx, :2]
+        if self.cfg.frame == "torso":
+            self.cylinder_pos_w = self.robot.data.body_state_w[:, self.torso_idx, :3]
+            self.cylinder_quat_w = self.robot.data.body_state_w[:, self.torso_idx, 3:7]
+        elif self.cfg.frame == "z-inv":
+            self.cylinder_pos_w[..., :2] = self.robot.data.root_pos_w[..., :2]
+            self.cylinder_quat_w = math_utils.yaw_quat(self.robot.data.root_quat_w)
+        elif self.cfg.frame == "foot":
+            self.cylinder_pos_w[..., :2] = 0.5 * (
+                self.robot.data.body_state_w[:, self.left_foot_idx, :2] +
+                self.robot.data.body_state_w[:, self.right_foot_idx, :2]
+                )
+            
+            _, _, left_euler = math_utils.euler_xyz_from_quat(
+                self.robot.data.body_state_w[:, self.left_foot_idx, 3:7]
             )
-        
-        _, _, left_euler = math_utils.euler_xyz_from_quat(
-            self.robot.data.body_state_w[:, self.left_foot_idx, 3:7]
-        )
-        _, _, right_euler = math_utils.euler_xyz_from_quat(
-            self.robot.data.body_state_w[:, self.right_foot_idx, 3:7]
-        )
-        
-        self.cylinder_quat_w = math_utils.quat_from_euler_xyz(
-            th.zeros_like(left_euler),
-            th.zeros_like(left_euler),
-            0.5*(left_euler + right_euler)
-        )
+            _, _, right_euler = math_utils.euler_xyz_from_quat(
+                self.robot.data.body_state_w[:, self.right_foot_idx, 3:7]
+            )
+            
+            self.cylinder_quat_w = math_utils.quat_from_euler_xyz(
+                th.zeros_like(left_euler),
+                th.zeros_like(left_euler),
+                0.5*(left_euler + right_euler)
+            )
 
     def _update_command(self):
         '''
