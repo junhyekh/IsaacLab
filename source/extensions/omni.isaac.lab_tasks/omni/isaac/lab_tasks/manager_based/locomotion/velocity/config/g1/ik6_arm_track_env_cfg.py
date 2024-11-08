@@ -165,34 +165,8 @@ class ObservationsCfg:
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
         actions = ObsTerm(func=mdp.last_action)
         # hands_command= ObsTerm(func=mdp.generated_commands, params={"command_name": "hands_pose"})
-        momentum_change = ObsTerm(
-            func=arm_track_env.relative_arm_mom_dev,
-            params={
-                "asset_cfg": SceneEntityCfg(
-                    "robot", 
-                    body_names=["right_shoulder_pitch_link",
-                                "right_shoulder_roll_link",
-                                "right_shoulder_yaw_link",
-                                "right_elbow_link",
-                                "right_wrist_.*",]),
-            },
-            scale=0.
-        )
-        momentum = ObsTerm(
-            func=arm_track_env.relative_arm_mom,
-            params={
-                "asset_cfg": SceneEntityCfg(
-                    "robot", 
-                    body_names=["right_shoulder_pitch_link",
-                                "right_shoulder_roll_link",
-                                "right_shoulder_yaw_link",
-                                "right_elbow_link",
-                                "right_wrist_.*",]),
-            },
-            scale=0.
-        )
-        # right_arm_com = ObsTerm(
-        #     func=arm_track_env.relative_arm_com,
+        # momentum_change = ObsTerm(
+        #     func=arm_track_env.relative_arm_mom_dev,
         #     params={
         #         "asset_cfg": SceneEntityCfg(
         #             "robot", 
@@ -202,21 +176,47 @@ class ObservationsCfg:
         #                         "right_elbow_link",
         #                         "right_wrist_.*",]),
         #     },
-        #     scale=1.
+        #     scale=0.
         # )
-        # left_arm_com = ObsTerm(
-        #     func=arm_track_env.relative_arm_com,
+        # momentum = ObsTerm(
+        #     func=arm_track_env.relative_arm_mom,
         #     params={
         #         "asset_cfg": SceneEntityCfg(
         #             "robot", 
-        #             body_names=["left_shoulder_pitch_link",
-        #                         "left_shoulder_roll_link",
-        #                         "left_shoulder_yaw_link",
-        #                         "left_elbow_link",
-        #                         "left_wrist_.*",]),
+        #             body_names=["right_shoulder_pitch_link",
+        #                         "right_shoulder_roll_link",
+        #                         "right_shoulder_yaw_link",
+        #                         "right_elbow_link",
+        #                         "right_wrist_.*",]),
         #     },
-        #     scale=1.
+        #     scale=0.
         # )
+        right_arm_com = ObsTerm(
+            func=arm_track_env.relative_arm_com,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot", 
+                    body_names=["right_shoulder_pitch_link",
+                                "right_shoulder_roll_link",
+                                "right_shoulder_yaw_link",
+                                "right_elbow_link",
+                                "right_wrist_.*",]),
+            },
+            scale=1.
+        )
+        left_arm_com = ObsTerm(
+            func=arm_track_env.relative_arm_com,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot", 
+                    body_names=["left_shoulder_pitch_link",
+                                "left_shoulder_roll_link",
+                                "left_shoulder_yaw_link",
+                                "left_elbow_link",
+                                "left_wrist_.*",]),
+            },
+            scale=1.
+        )
 
 
 
