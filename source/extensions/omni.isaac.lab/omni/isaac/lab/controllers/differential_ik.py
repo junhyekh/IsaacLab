@@ -250,5 +250,15 @@ class DifferentialIKController:
             delta_joint_pos = delta_joint_pos.squeeze(-1)
         else:
             raise ValueError(f"Unsupported inverse-kinematics method: {self.cfg.ik_method}")
+        
+        
+        if self.cfg.use_norm_clipping:
+            delta_joint_pos_norm = torch.norm(delta_joint_pos, dim=-1, keepdim=True)
+            delta_joint_pos_norm = torch.where(
+                delta_joint_pos_norm < self.cfg.max_delta_norm,
+                torch.ones_like(delta_joint_pos_norm),
+                delta_joint_pos_norm / self.cfg.max_delta_norm)
+
+            delta_joint_pos /= delta_joint_pos_norm
 
         return delta_joint_pos

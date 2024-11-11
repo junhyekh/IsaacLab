@@ -98,14 +98,16 @@ class ActionsCfg:
                                                         "left_shoulder_yaw_joint",
                                                         "left_elbow_joint",
                                                         "left_wrist_.*",
-                                                        "waist_.*"
+                                                        "waist_.*",
+                                                        "right_shoulder_pitch_joint",
                                                         ],
                                            scale=0.5,
                                            use_default_offset=True)
     right_arm = mdp.PassiveIKActionCfg(
             asset_name="robot",
             command_name='hands_pose',
-            joint_names=["right_shoulder_pitch_joint",
+            joint_names=[
+                        # "right_shoulder_pitch_joint",
                         "right_shoulder_roll_joint",
                         "right_shoulder_yaw_joint",
                         "right_elbow_joint",
@@ -116,12 +118,14 @@ class ActionsCfg:
                 command_type="pose",
                 use_relative_mode=False,
                 ik_method="dls",
-                ik_params={"lambda_val": 0.1},
+                # ik_params={"lambda_val": 0.1},
+                ik_params={"lambda_val": 0.05},
                 use_weighted_jacobian=True,
                 # use_weighted_jacobian=False,
-                weight_pos=[1.0, 1.0, 1.0, 1.0, 0., 0., 0.],
+                use_norm_clipping=False,
+                weight_pos=[1.0, 1.0, 1.0, 0., 0., 0.],
                 # weight_pos=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-                weight_ori=[0., 0., 0., 0., 1.0, 1.0, 1.0],
+                weight_ori=[0., 0., 0., 1.0, 1.0, 1.0],
                 # weight_ori=[0., 0., 0., 0., 0.1, 0.1, 0.1],
                 # weight_ori=[0., 0., 0., 0., 0., 0., 0.],
                 ),
@@ -333,12 +337,13 @@ class EventCfg:
 @configclass
 class G1Rewards:
     """Reward terms for the MDP."""
-    # alive = RewTerm(func=mdp.is_alive, weight=1.0)
-    alive = RewTerm(func=mdp.is_alive, weight=2.0)
+    alive = RewTerm(func=mdp.is_alive, weight=1.0)
+    # alive = RewTerm(func=mdp.is_alive, weight=2.0)
     # -- task
     dof_torques_l2 = RewTerm(
         func=mdp.joint_torques_l2, 
-        weight=-1.0e-5,
+        # weight=-1.0e-5,
+        weight=0.,
         params={
             'asset_cfg':SceneEntityCfg(
                 'robot',
@@ -353,7 +358,31 @@ class G1Rewards:
                             "left_shoulder_yaw_joint",
                             "left_elbow_joint",
                             "left_wrist_.*",
-                            "waist_.*"])
+                            "waist_.*",
+                            "right_shoulder_pitch_joint",
+                            ])
+        },
+    )
+    rel_torques_l2 = RewTerm(
+        func=arm_track_env.rel_joint_torques_l2, 
+        weight=-0.3,
+        params={
+            'asset_cfg':SceneEntityCfg(
+                'robot',
+                joint_names=[".*_hip_yaw_joint",
+                            ".*_hip_roll_joint",
+                            ".*_hip_pitch_joint",
+                            ".*_knee_joint",
+                            ".*_ankle_pitch_joint", 
+                            ".*_ankle_roll_joint",
+                            "left_shoulder_pitch_joint",
+                            "left_shoulder_roll_joint",
+                            "left_shoulder_yaw_joint",
+                            "left_elbow_joint",
+                            "left_wrist_.*",
+                            "waist_.*",
+                            "right_shoulder_pitch_joint",
+                            ])
         },
     )
     ankle_dof_torques_l2 = RewTerm(
@@ -392,7 +421,9 @@ class G1Rewards:
                             "left_shoulder_yaw_joint",
                             "left_elbow_joint",
                             "left_wrist_.*",
-                            "waist_.*"])
+                            "waist_.*",
+                            "right_shoulder_pitch_joint",
+                            ])
         },
         weight=-0.0002
     )
@@ -413,7 +444,9 @@ class G1Rewards:
                             "left_shoulder_yaw_joint",
                             "left_elbow_joint",
                             "left_wrist_.*",
-                            "waist_.*"])
+                            "waist_.*",
+                            "right_shoulder_pitch_joint",
+                            ])
         },
     )
     # dof_vel_l2 = RewTerm(func=mdp.joint_vel_l2, weight=-1e-5)
@@ -434,7 +467,9 @@ class G1Rewards:
                             "left_shoulder_yaw_joint",
                             "left_elbow_joint",
                             "left_wrist_.*",
-                            "waist_.*"])
+                            "waist_.*",
+                            "right_shoulder_pitch_joint",
+                            ])
         },
     )
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.005)
@@ -580,7 +615,8 @@ class G1Rewards:
     )
     approaching = RewTerm(
         func=arm_track_env.approaching_pose,
-        weight=0.,
+        # weight=0.,
+        weight=0.2,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot", 
@@ -589,7 +625,8 @@ class G1Rewards:
                             "right_shoulder_yaw_joint",
                             "right_elbow_joint",
                             "right_wrist_.*",]),
-            "command_name": "hands_pose"
+            "command_name": "hands_pose",
+            "penalize_joint_limit": True,
         },
     )
 
@@ -666,6 +703,7 @@ class CommandsCfg:
         # mode="cylinder",
         mode="cart",
         frame="foot",
+        # frame="z-inv",
         ranges=mdp.IKHandTrajCommandCfg.Ranges(
             # r_range=(0.5, 0.6),
             # r_range=(0.2, 0.6),

@@ -116,9 +116,11 @@ class ActionsCfg:
                 command_type="pose",
                 use_relative_mode=False,
                 ik_method="dls",
-                ik_params={"lambda_val": 0.1},
+                # ik_params={"lambda_val": 0.1},
+                ik_params={"lambda_val": 0.05},
                 use_weighted_jacobian=True,
                 # use_weighted_jacobian=False,
+                use_norm_clipping=False,
                 weight_pos=[1.0, 1.0, 1.0, 1.0, 0., 0., 0.],
                 # weight_pos=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
                 weight_ori=[0., 0., 0., 0., 1.0, 1.0, 1.0],
@@ -333,12 +335,33 @@ class EventCfg:
 @configclass
 class G1Rewards:
     """Reward terms for the MDP."""
-    # alive = RewTerm(func=mdp.is_alive, weight=1.0)
-    alive = RewTerm(func=mdp.is_alive, weight=2.0)
+    alive = RewTerm(func=mdp.is_alive, weight=1.0)
+    # alive = RewTerm(func=mdp.is_alive, weight=2.0)
     # -- task
     dof_torques_l2 = RewTerm(
         func=mdp.joint_torques_l2, 
-        weight=-1.0e-5,
+        # weight=-1.0e-5,
+        weight=0.,
+        params={
+            'asset_cfg':SceneEntityCfg(
+                'robot',
+                joint_names=[".*_hip_yaw_joint",
+                            ".*_hip_roll_joint",
+                            ".*_hip_pitch_joint",
+                            ".*_knee_joint",
+                            ".*_ankle_pitch_joint", 
+                            ".*_ankle_roll_joint",
+                            "left_shoulder_pitch_joint",
+                            "left_shoulder_roll_joint",
+                            "left_shoulder_yaw_joint",
+                            "left_elbow_joint",
+                            "left_wrist_.*",
+                            "waist_.*"])
+        },
+    )
+    rel_torques_l2= RewTerm(
+        func=arm_track_env.rel_joint_torques_l2, 
+        weight=-0.3,
         params={
             'asset_cfg':SceneEntityCfg(
                 'robot',
@@ -589,7 +612,8 @@ class G1Rewards:
                             "right_shoulder_yaw_joint",
                             "right_elbow_joint",
                             "right_wrist_.*",]),
-            "command_name": "hands_pose"
+            "command_name": "hands_pose",
+            "penalize_joint_limit": True,
         },
     )
 
@@ -666,6 +690,7 @@ class CommandsCfg:
         # mode="cylinder",
         mode="cart",
         frame="foot",
+        # frame="z-inv",
         ranges=mdp.IKHandTrajCommandCfg.Ranges(
             # r_range=(0.5, 0.6),
             # r_range=(0.2, 0.6),

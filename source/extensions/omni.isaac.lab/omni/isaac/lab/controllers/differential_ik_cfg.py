@@ -60,6 +60,9 @@ class DifferentialIKControllerCfg:
     weight_pos: List[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
     weight_ori: List[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 
+    use_norm_clipping: bool = True
+    max_delta_norm: float = 0.5
+
     def __post_init__(self):
         # check valid input
         if self.command_type not in ["position", "pose"]:

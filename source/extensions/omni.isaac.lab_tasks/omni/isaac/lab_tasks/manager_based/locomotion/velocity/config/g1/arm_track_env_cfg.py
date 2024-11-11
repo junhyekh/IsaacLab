@@ -101,6 +101,7 @@ def approaching_pose(
         asset_cfg: SceneEntityCfg,
         command_name: str,
         max_dist: float = 0.2,
+        penalize_joint_limit: bool = True
         ) -> th.Tensor:
     # extract the asset (to enable type hinting)
     command = env.command_manager.get_command(command_name)
@@ -117,8 +118,10 @@ def approaching_pose(
     )
     out_of_limits = th.any(out_of_limits, dim=-1)
 
-    pos_error = th.where(out_of_limits, th.ones_like(pos_error), pos_error)
-    rew = th.exp(-50 * th.square(pos_error))
+    if penalize_joint_limit:
+        pos_error = th.where(out_of_limits, th.ones_like(pos_error), pos_error)
+    # rew = th.exp(-50 * th.square(pos_error))
+    rew = th.exp(-10 * th.square(pos_error))
     if "Arm_joint_limit" not in env.reward_manager.episode_stat_sums.keys():
         env.reward_manager.episode_stat_sums["Arm_joint_limit"] = \
             th.zeros(env.num_envs, dtype=th.float, device=env.device)
@@ -227,6 +230,20 @@ def relative_arm_com(
         asset.data.root_quat_w, arm_com_w-asset.data.root_pos_w)
 
     return arm_com_b
+
+def rel_joint_torques_l2(
+        env: ManagerBasedRLEnv, 
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+    ) ->th.Tensor:
+    """Penalize joint torques applied on the articulation using L2 squared kernel.
+
+    NOTE: Only the joints configured in :attr:`asset_cfg.joint_ids` will have their joint torques contribute to the term.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    rel_torque = asset.data.applied_torque / asset.root_physx_view.get_dof_max_forces().clone().to(env.device)
+    rew = th.sum(th.square(rel_torque[:, asset_cfg.joint_ids]), dim=1)
+    # extract the used quantities (to enable type-hinting)
+    return rew
     
 @configclass
 class MySceneCfg(InteractiveSceneCfg):
@@ -303,9 +320,11 @@ class ActionsCfg:
                 command_type="pose",
                 use_relative_mode=False,
                 ik_method="dls",
-                ik_params={"lambda_val": 0.1},
+                # ik_params={"lambda_val": 0.1},
+                ik_params={"lambda_val": 0.05},
                 use_weighted_jacobian=True,
                 # use_weighted_jacobian=False,
+                use_norm_clipping=False,
                 weight_pos=[1.0, 1.0, 1.0, 1.0, 0., 0., 0.],
                 # weight_pos=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
                 weight_ori=[0., 0., 0., 0., 1.0, 1.0, 1.0],
@@ -525,7 +544,28 @@ class G1Rewards:
     # -- task
     dof_torques_l2 = RewTerm(
         func=mdp.joint_torques_l2, 
-        weight=-1.0e-5,
+        # weight=-1.0e-5,
+        weight=0.,
+        params={
+            'asset_cfg':SceneEntityCfg(
+                'robot',
+                joint_names=[".*_hip_yaw_joint",
+                            ".*_hip_roll_joint",
+                            ".*_hip_pitch_joint",
+                            ".*_knee_joint",
+                            ".*_ankle_pitch_joint", 
+                            ".*_ankle_roll_joint",
+                            "left_shoulder_pitch_joint",
+                            "left_shoulder_roll_joint",
+                            "left_shoulder_yaw_joint",
+                            "left_elbow_joint",
+                            "left_wrist_.*",
+                            "waist_.*"])
+        },
+    )
+    rel_torques_l2= RewTerm(
+        func=rel_joint_torques_l2, 
+        weight=-0.3,
         params={
             'asset_cfg':SceneEntityCfg(
                 'robot',
@@ -776,7 +816,8 @@ class G1Rewards:
                             "right_shoulder_yaw_joint",
                             "right_elbow_joint",
                             "right_wrist_.*",]),
-            "command_name": "hands_pose"
+            "command_name": "hands_pose",
+            "penalize_joint_limit": True,
         },
     )
 

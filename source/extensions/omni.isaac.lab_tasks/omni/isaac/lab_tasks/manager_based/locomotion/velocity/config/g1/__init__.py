@@ -5,7 +5,7 @@
 
 import gymnasium as gym
 
-from . import agents, flat_env_cfg, rough_env_cfg, standing_env_cfg, arm_track_env_cfg, ik7_arm_track_env_cfg
+from . import agents, flat_env_cfg, rough_env_cfg, standing_env_cfg, arm_track_env_cfg, ik7_arm_track_env_cfg, ik6_arm_track_env_cfg, ik5_arm_track_env_cfg, ik0_arm_track_env_cfg
 
 ##
 # Register Gym environments.
@@ -121,3 +121,26 @@ gym.register(
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:G1ArmTrackPPORunnerCfg",
     },
 )
+
+
+gym.register(
+    id="Arm-track-IK6-G1-v0",
+    entry_point="omni.isaac.lab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": ik6_arm_track_env_cfg.G1StandingEnvCfg,
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:G1ArmTrackPPORunnerCfg",
+    },
+)
+
+
+gym.register(
+    id="Arm-track-IK6-G1-Play-v0",
+    entry_point="omni.isaac.lab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": ik6_arm_track_env_cfg.G1StandingEnvCfg_PLAY,
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:G1ArmTrackPPORunnerCfg",
+    },
+)
+
