@@ -220,7 +220,16 @@ class IKHandTrajCommandCfg(CommandTermCfg):
     """The configuration for the current pose visualization marker. Defaults to FRAME_MARKER_CFG."""
 
     vis_hand_bbox: bool = True
-    hand_bbox_file: str = '/input/right_hand.npy'
+    # hand_bbox_file: str = '/home/user/dex-clutter/source/extensions/omni.isaac.lab/omni/isaac/lab/envs/mdp/commands/right_hand.npy'
+    hand_bbox = [[ 0.0000, -0.0214, -0.0439],
+                [ 0.0000, -0.0214,  0.0439],
+                [ 0.0000,  0.0728, -0.0439],
+                [ 0.0000,  0.0728,  0.0439],
+                [ 0.1038, -0.0214, -0.0439],
+                [ 0.1038, -0.0214,  0.0439],
+                [ 0.1038,  0.0728, -0.0439],
+                [ 0.1038,  0.0728,  0.0439]]
+
 
     bbox_vis_ref_cfg = RAY_CASTER_MARKER_CFG.replace(
                                                     prim_path=f"/Visuals/Command/bbox")
@@ -281,7 +290,9 @@ class IKHandTrajCommand(CommandTerm):
             raise ValueError("Resampling time range should be unique in order to compute lerp")
         self.resampling_time = self.cfg.resampling_time_range[0]
 
-        hand_bboxes = th.as_tensor(np.load(cfg.hand_bbox_file),
+        # hand_bboxes = th.as_tensor(np.load(cfg.hand_bbox_file),
+        #                 dtype=th.float, device=self.device)
+        hand_bboxes = th.as_tensor(cfg.hand_bbox,
                         dtype=th.float, device=self.device)
         self._hand_bboxes = hand_bboxes[None].repeat(self.num_envs, 1, 1)
 
@@ -608,8 +619,10 @@ class IKHandTrajCommand(CommandTerm):
                     if hasattr(self, '_hand_bboxes'):
                         n_points = self._hand_bboxes.shape[1]
                     else:
-                        bbox = np.load(self.cfg.hand_bbox_file)
-                        n_points = bbox.shape[0]
+                        n_points = len(self.cfg.hand_bbox)
+                        pass
+                        # bbox = np.load(self.cfg.hand_bbox_file)
+                        # n_points = bbox.shape[0]
                     self.bbox_visualizer = []
                     for i in range(n_points):
                         cc = self.cfg.bbox_vis_ref_cfg.replace(

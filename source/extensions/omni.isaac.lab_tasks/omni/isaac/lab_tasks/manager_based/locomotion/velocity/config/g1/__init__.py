@@ -5,7 +5,7 @@
 
 import gymnasium as gym
 
-from . import agents, flat_env_cfg, rough_env_cfg, standing_env_cfg, arm_track_env_cfg, ik7_arm_track_env_cfg, ik6_arm_track_env_cfg, ik5_arm_track_env_cfg, ik0_arm_track_env_cfg
+from . import agents, flat_env_cfg, rough_env_cfg, standing_env_cfg, arm_track_env_cfg, ik7_arm_track_env_cfg, ik6_arm_track_env_cfg
 
 ##
 # Register Gym environments.
