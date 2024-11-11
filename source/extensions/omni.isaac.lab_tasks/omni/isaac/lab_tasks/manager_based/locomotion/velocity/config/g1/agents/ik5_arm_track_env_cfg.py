@@ -41,222 +41,9 @@ from domi.sim.contact_sensor_extra import ContactSensorExtra, ContactSensorExtra
 from icecream import ic
 
 from . import standing_env_cfg as stand_env
-
-def position_command_error(
-        env: ManagerBasedRLEnv, 
-        command_name: str) -> th.Tensor:
-    # extract the asset (to enable type hinting)
-    command = env.command_manager.get_command(command_name)
-    pos_error = command[..., :3].norm(dim=-1)
-
-    if "Right_hand_target_dist" not in env.reward_manager.episode_stat_sums.keys():
-        # env.reward_manager.episode_stat_sums["Left_hand_target_dist"] = \
-        #     th.zeros(env.num_envs, dtype=th.float, device=env.device)
-        env.reward_manager.episode_stat_sums["Right_hand_target_dist"] = \
-            th.zeros(env.num_envs, dtype=th.float, device=env.device)
-
-    # env.reward_manager.episode_stat_sums["Left_hand_target_dist"] += \
-    #     command[..., :3].norm(dim=-1)
-    env.reward_manager.episode_stat_sums["Right_hand_target_dist"] += \
-        command[..., :3].norm(dim=-1)
-
-    return pos_error
-
-def orientation_command_error(
-        env: ManagerBasedRLEnv, 
-        command_name: str) -> th.Tensor:
-    # extract the asset (to enable type hinting)
-    command = env.command_manager.get_command(command_name)
-    ori_error = command[..., 3:6].norm(dim=-1)
-
-    if "Right_hand_target_ori" not in env.reward_manager.episode_stat_sums.keys():
-        env.reward_manager.episode_stat_sums["Right_hand_target_ori"] = \
-            th.zeros(env.num_envs, dtype=th.float, device=env.device)
-
-    env.reward_manager.episode_stat_sums["Right_hand_target_ori"] += \
-        command[..., 3:6].norm(dim=-1)
-
-    return ori_error
-
-def zmp_supp_dist_v2(
-        env: ManagerBasedRLEnv, 
-        sigma: float,
-        asset_cfg: SceneEntityCfg,
-    ) -> th.Tensor:
-    # """
-    # Computes the distance/margin between the support polygon and the zmp
-    # """
-    asset: Articulation = env.scene[asset_cfg.name]
-
-    signed_zmp_dist = zmp.hull_point_signed_dist(
-        asset.data.hull_points, 
-        asset.data.hull_idx, 
-        asset.data.zmp_pos_w[..., :2]
-    )
-    rew = (th.exp(sigma * -th.clip(signed_zmp_dist, max=0))-1)
-    return rew
-
-def approaching_pose(
-        env: ManagerBasedRLEnv, 
-        asset_cfg: SceneEntityCfg,
-        command_name: str,
-        max_dist: float = 0.2,
-        penalize_joint_limit: bool = True
-        ) -> th.Tensor:
-    # extract the asset (to enable type hinting)
-    command = env.command_manager.get_command(command_name)
-    pos_error = command[..., :3].norm(dim=-1)
-
-    # extract the used quantities (to enable type-hinting)
-    asset: Articulation = env.scene[asset_cfg.name]
-    # compute out of limits constraints
-    out_of_limits = th.logical_or(
-        asset.data.joint_pos[:, asset_cfg.joint_ids] < \
-            asset.data.soft_joint_pos_limits[:, asset_cfg.joint_ids, 0],
-        asset.data.joint_pos[:, asset_cfg.joint_ids] > \
-            asset.data.soft_joint_pos_limits[:, asset_cfg.joint_ids, 1],
-    )
-    out_of_limits = th.any(out_of_limits, dim=-1)
-
-    if penalize_joint_limit:
-        pos_error = th.where(out_of_limits, th.ones_like(pos_error), pos_error)
-    # rew = th.exp(-50 * th.square(pos_error))
-    rew = th.exp(-10 * th.square(pos_error))
-    if "Arm_joint_limit" not in env.reward_manager.episode_stat_sums.keys():
-        env.reward_manager.episode_stat_sums["Arm_joint_limit"] = \
-            th.zeros(env.num_envs, dtype=th.float, device=env.device)
-        env.reward_manager.episode_stat_sums["Approaching_rew"] = \
-            th.zeros(env.num_envs, dtype=th.float, device=env.device)
-
-    env.reward_manager.episode_stat_sums["Arm_joint_limit"] += out_of_limits.float()
-    env.reward_manager.episode_stat_sums["Approaching_rew"] += rew
-
-    return rew
-
-def hand_track_bb(env: ManagerBasedRLEnv, 
-        command_name: str):
-    
-    command = env.command_manager.get_term(command_name)
-    hbb, gbb = command.get_current_bbox()
-
-    # extract the used quantities (to enable type-hinting)
-    # asset: Articulation = env.scene[asset_cfg.name]
-    diff = hbb - gbb
-    pos_error = th.norm(diff, dim=-1).mean(-1)
-    return th.exp(-50 * th.square(pos_error))
-    # return th.exp(-10 * th.square(pos_error))
+from . import arm_track_env_cfg as arm_track_env
 
 
-def maintain_target(
-        env: ManagerBasedRLEnv, 
-        command_name: str,
-        asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
-        ) -> th.Tensor:
-    asset: Articulation = env.scene[asset_cfg.name]
-    command = env.command_manager.get_command(command_name)
-    pos_error = command[..., :3].norm(dim=-1)
-    ori_error = command[..., 3:6].norm(dim=-1)
-    joint_vel = th.abs(asset.data.joint_vel[:, asset_cfg.joint_ids])
-    max_joint_vel, _ = th.max(joint_vel, dim=-1)
-
-    maintain_target = \
-        (pos_error <= 0.2) & (ori_error <= 0.2) & (max_joint_vel <= 1.0)
-    
-    
-    # ic(pos_error, ori_error, max_joint_vel, maintain_target)
-
-    if "Max_joint_vel" not in env.reward_manager.episode_stat_sums.keys():
-        env.reward_manager.episode_stat_sums["Max_joint_vel"] = \
-            th.zeros(env.num_envs, dtype=th.float, device=env.device)
-
-    env.reward_manager.episode_stat_sums["Max_joint_vel"] += max_joint_vel
-
-    return maintain_target.float()
-
-
-def relative_arm_mom_dev(
-        env: ManagerBasedRLEnv, 
-        asset_cfg: SceneEntityCfg
-    ) -> th.Tensor:
-
-    asset: Articulation = env.scene[asset_cfg.name]
-
-
-    prev_rel_lin_mom = th.zeros(env.num_envs, dtype=th.float, device=env.device)
-    prev_rel_ang_mom = th.zeros(env.num_envs, dtype=th.float, device=env.device)
-
-    if hasattr(env, "prev_lin_mom"):
-        prev_rel_lin_mom = env.prev_lin_mom
-        prev_rel_ang_mom = env.prev_ang_mom
-    else:
-        return th.zeros((env.num_envs, 6), dtype=th.float, device=env.device)
-
-    
-    prev_rel_lin_mom = th.where(
-        env.episode_length_buf==1,
-        th.zeros_like(prev_rel_lin_mom),
-        prev_rel_lin_mom)
-    prev_rel_ang_mom = th.where(
-        env.episode_length_buf==1,
-        th.zeros_like(prev_rel_ang_mom),
-        prev_rel_ang_mom)
-
-    rel_lin_mom, rel_ang_mom = zmp.compute_rel_lin_ang_momentum(
-        asset, asset_cfg.body_ids, asset.data.root_state_w)
-
-    delta_lin_mom = rel_lin_mom - prev_rel_lin_mom
-    delta_ang_mom = rel_ang_mom - prev_rel_ang_mom
-    
-
-    
-    env.prev_lin_mom = rel_lin_mom
-    env.prev_ang_mom = rel_ang_mom
-
-    return th.cat([delta_lin_mom, delta_ang_mom], dim=-1)
-
-def relative_arm_mom(
-        env: ManagerBasedRLEnv, 
-        asset_cfg: SceneEntityCfg
-    ) -> th.Tensor:
-
-    asset: Articulation = env.scene[asset_cfg.name]
-    rel_lin_mom, rel_ang_mom = zmp.compute_rel_lin_ang_momentum(
-        asset, asset_cfg.body_ids, asset.data.root_state_w)
-    
-    arm_com_w = zmp.compute_com(
-        asset, env.device, asset_cfg.body_ids
-    )
-    arm_com_b = math_utils.quat_rotate_inverse(
-        asset.data.root_quat_w, arm_com_w-asset.data.root_pos_w)
-    return th.cat([rel_lin_mom, rel_ang_mom], dim=-1)
-
-def relative_arm_com(
-        env: ManagerBasedRLEnv, 
-        asset_cfg: SceneEntityCfg
-    ) -> th.Tensor:
-    asset: Articulation = env.scene[asset_cfg.name]
-    
-    arm_com_w = zmp.compute_com(
-        asset, env.device, asset_cfg.body_ids
-    )
-    arm_com_b = math_utils.quat_rotate_inverse(
-        asset.data.root_quat_w, arm_com_w-asset.data.root_pos_w)
-
-    return arm_com_b
-
-def rel_joint_torques_l2(
-        env: ManagerBasedRLEnv, 
-        asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
-    ) ->th.Tensor:
-    """Penalize joint torques applied on the articulation using L2 squared kernel.
-
-    NOTE: Only the joints configured in :attr:`asset_cfg.joint_ids` will have their joint torques contribute to the term.
-    """
-    asset: Articulation = env.scene[asset_cfg.name]
-    rel_torque = asset.data.applied_torque / asset.root_physx_view.get_dof_max_forces().clone().to(env.device)
-    rew = th.sum(th.square(rel_torque[:, asset_cfg.joint_ids]), dim=1)
-    # extract the used quantities (to enable type-hinting)
-    return rew
     
 @configclass
 class MySceneCfg(InteractiveSceneCfg):
@@ -300,60 +87,52 @@ class ActionsCfg:
     """Action specifications for the MDP."""
 
     joint_pos = mdp.JointPositionActionCfg(asset_name="robot",
-                                           joint_names=[".*"],
+                                           joint_names=[".*_hip_yaw_joint",
+                                                        ".*_hip_roll_joint",
+                                                        ".*_hip_pitch_joint",
+                                                        ".*_knee_joint",
+                                                        ".*_ankle_pitch_joint", 
+                                                        ".*_ankle_roll_joint",
+                                                        "left_shoulder_pitch_joint",
+                                                        "left_shoulder_roll_joint",
+                                                        "left_shoulder_yaw_joint",
+                                                        "left_elbow_joint",
+                                                        "left_wrist_.*",
+                                                        "waist_.*",
+                                                        "right_shoulder_pitch_joint",
+                                                        "right_shoulder_roll_joint",
+                                                        ],
                                            scale=0.5,
                                            use_default_offset=True)
-    # joint_pos = mdp.JointPositionActionCfg(asset_name="robot",
-    #                                        joint_names=[".*_hip_yaw_joint",
-    #                                                     ".*_hip_roll_joint",
-    #                                                     ".*_hip_pitch_joint",
-    #                                                     ".*_knee_joint",
-    #                                                     ".*_ankle_pitch_joint", 
-    #                                                     ".*_ankle_roll_joint",
-    #                                                     "left_shoulder_pitch_joint",
-    #                                                     "left_shoulder_roll_joint",
-    #                                                     "left_shoulder_yaw_joint",
-    #                                                     "left_elbow_joint",
-    #                                                     "left_wrist_.*",
-    #                                                     "waist_.*"
-    #                                                     ],
-    #                                        scale=0.5,
-    #                                        use_default_offset=True)
-    # right_arm = mdp.PassiveIKActionCfg(
-    #         asset_name="robot",
-    #         command_name='hands_pose',
-    #         joint_names=["right_shoulder_pitch_joint",
-    #                     "right_shoulder_roll_joint",
-    #                     "right_shoulder_yaw_joint",
-    #                     "right_elbow_joint",
-    #                     "right_wrist_.*",],
+    right_arm = mdp.PassiveIKActionCfg(
+            asset_name="robot",
+            command_name='hands_pose',
+            joint_names=[
+                        # "right_shoulder_pitch_joint",
+                        # "right_shoulder_roll_joint",
+                        "right_shoulder_yaw_joint",
+                        "right_elbow_joint",
+                        "right_wrist_.*",],
 
-    #         body_name="right_hand_palm_link",
-    #         controller=DifferentialIKControllerCfg(
-    #             command_type="pose",
-    #             use_relative_mode=False,
-    #             ik_method="dls",
-    #             ik_params={"lambda_val": 0.1},
-    #             use_weighted_jacobian=True,
-    #             # use_weighted_jacobian=False,
-    #             weight_pos=[1.0, 1.0, 1.0, 1.0, 0., 0., 0.],
-    #             # weight_pos=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-    #             weight_ori=[0., 0., 0., 0., 1.0, 1.0, 1.0],
-    #             # weight_ori=[0., 0., 0., 0., 0.1, 0.1, 0.1],
-    #             # weight_ori=[0., 0., 0., 0., 0., 0., 0.],
-    #             ),
-    #         scale=1.0,
-    #         compensate_gravity=True,
-    #     )
-    # right_arm = mdp.RelativeJointPositionActionCfg(
-    #     asset_name="robot",
-    #     joint_names=["right_shoulder_pitch_joint",
-    #                     "right_shoulder_roll_joint",
-    #                     "right_shoulder_yaw_joint",
-    #                     "right_elbow_joint",
-    #                     "right_wrist_.*",],
-    #                     scale=0.5,
-    # )
+            body_name="right_hand_palm_link",
+            controller=DifferentialIKControllerCfg(
+                command_type="pose",
+                use_relative_mode=False,
+                ik_method="dls",
+                # ik_params={"lambda_val": 0.1},
+                ik_params={"lambda_val": 0.05},
+                # use_weighted_jacobian=True,
+                use_weighted_jacobian=False,
+                use_norm_clipping=False,
+                weight_pos=[1.0, 1.0, 1.0, 0., 0., 0.],
+                # weight_pos=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                weight_ori=[0., 0., 0., 1.0, 1.0, 1.0],
+                # weight_ori=[0., 0., 0., 0., 0.1, 0.1, 0.1],
+                # weight_ori=[0., 0., 0., 0., 0., 0., 0.],
+                ),
+            scale=1.0,
+            compensate_gravity=True,
+        )
 
 
 
@@ -387,36 +166,12 @@ class ObservationsCfg:
                 "right_foot_sensor_cfg": SceneEntityCfg("contact_right_foot"),
             },
         )
-        joint_pos = ObsTerm(func=mdp.joint_pos_rel,
-                            params={
-                                'asset_cfg': SceneEntityCfg("robot",
-                                                            joint_names=[".*_hip_yaw_joint",
-                                                        ".*_hip_roll_joint",
-                                                        ".*_hip_pitch_joint",
-                                                        ".*_knee_joint",
-                                                        ".*_ankle_pitch_joint", 
-                                                        ".*_ankle_roll_joint",
-                                                        "left_shoulder_pitch_joint",
-                                                        "left_shoulder_roll_joint",
-                                                        "left_shoulder_yaw_joint",
-                                                        "left_elbow_joint",
-                                                        "left_wrist_.*",
-                                                        "waist_.*"])
-                            })
-        arm_joint = ObsTerm(func=mdp.joint_pos,
-                             params={
-                                'asset_cfg': SceneEntityCfg("robot",
-                                                            joint_names=["right_shoulder_pitch_joint",
-                                                            "right_shoulder_roll_joint",
-                                                            "right_shoulder_yaw_joint",
-                                                            "right_elbow_joint",
-                                                            "right_wrist_.*",])
-                            })
+        joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
         actions = ObsTerm(func=mdp.last_action)
-        hands_command= ObsTerm(func=mdp.generated_commands, params={"command_name": "hands_pose"})
+        # hands_command= ObsTerm(func=mdp.generated_commands, params={"command_name": "hands_pose"})
         # momentum_change = ObsTerm(
-        #     func=relative_arm_mom_dev,
+        #     func=arm_track_env.relative_arm_mom_dev,
         #     params={
         #         "asset_cfg": SceneEntityCfg(
         #             "robot", 
@@ -429,7 +184,7 @@ class ObservationsCfg:
         #     scale=0.
         # )
         # momentum = ObsTerm(
-        #     func=relative_arm_mom,
+        #     func=arm_track_env.relative_arm_mom,
         #     params={
         #         "asset_cfg": SceneEntityCfg(
         #             "robot", 
@@ -442,7 +197,7 @@ class ObservationsCfg:
         #     scale=0.
         # )
         right_arm_com = ObsTerm(
-            func=relative_arm_com,
+            func=arm_track_env.relative_arm_com,
             params={
                 "asset_cfg": SceneEntityCfg(
                     "robot", 
@@ -455,7 +210,7 @@ class ObservationsCfg:
             scale=1.
         )
         left_arm_com = ObsTerm(
-            func=relative_arm_com,
+            func=arm_track_env.relative_arm_com,
             params={
                 "asset_cfg": SceneEntityCfg(
                     "robot", 
@@ -604,28 +359,33 @@ class G1Rewards:
                             "left_shoulder_yaw_joint",
                             "left_elbow_joint",
                             "left_wrist_.*",
-                            "waist_.*"])
+                            "waist_.*",
+                            "right_shoulder_pitch_joint",
+                            "right_shoulder_roll_joint",
+                            ])
         },
     )
-    rel_torques_l2= RewTerm(
-        func=rel_joint_torques_l2, 
+    rel_torques_l2 = RewTerm(
+        func=arm_track_env.rel_joint_torques_l2, 
         weight=-0.3,
         params={
             'asset_cfg':SceneEntityCfg(
                 'robot',
-                # joint_names=[".*_hip_yaw_joint",
-                #             ".*_hip_roll_joint",
-                #             ".*_hip_pitch_joint",
-                #             ".*_knee_joint",
-                #             ".*_ankle_pitch_joint", 
-                #             ".*_ankle_roll_joint",
-                #             "left_shoulder_pitch_joint",
-                #             "left_shoulder_roll_joint",
-                #             "left_shoulder_yaw_joint",
-                #             "left_elbow_joint",
-                #             "left_wrist_.*",
-                #             "waist_.*"])
-            )
+                joint_names=[".*_hip_yaw_joint",
+                            ".*_hip_roll_joint",
+                            ".*_hip_pitch_joint",
+                            ".*_knee_joint",
+                            ".*_ankle_pitch_joint", 
+                            ".*_ankle_roll_joint",
+                            "left_shoulder_pitch_joint",
+                            "left_shoulder_roll_joint",
+                            "left_shoulder_yaw_joint",
+                            "left_elbow_joint",
+                            "left_wrist_.*",
+                            "waist_.*",
+                            "right_shoulder_pitch_joint",
+                            "right_shoulder_roll_joint",
+                            ])
         },
     )
     ankle_dof_torques_l2 = RewTerm(
@@ -664,10 +424,12 @@ class G1Rewards:
                             "left_shoulder_yaw_joint",
                             "left_elbow_joint",
                             "left_wrist_.*",
-                            "waist_.*"])
+                            "waist_.*",
+                            "right_shoulder_pitch_joint",
+                            "right_shoulder_roll_joint",
+                            ])
         },
-        # weight=-0.0002
-        weight=0.
+        weight=-0.0002
     )
     dof_acc_l2 = RewTerm(
         func=mdp.joint_acc_l2, 
@@ -675,19 +437,21 @@ class G1Rewards:
         params={
             'asset_cfg':SceneEntityCfg(
                 'robot',
-                # joint_names=[".*_hip_yaw_joint",
-                #             ".*_hip_roll_joint",
-                #             ".*_hip_pitch_joint",
-                #             ".*_knee_joint",
-                #             ".*_ankle_pitch_joint", 
-                #             ".*_ankle_roll_joint",
-                #             "left_shoulder_pitch_joint",
-                #             "left_shoulder_roll_joint",
-                #             "left_shoulder_yaw_joint",
-                #             "left_elbow_joint",
-                #             "left_wrist_.*",
-                #             "waist_.*"])
-            )
+                joint_names=[".*_hip_yaw_joint",
+                            ".*_hip_roll_joint",
+                            ".*_hip_pitch_joint",
+                            ".*_knee_joint",
+                            ".*_ankle_pitch_joint", 
+                            ".*_ankle_roll_joint",
+                            "left_shoulder_pitch_joint",
+                            "left_shoulder_roll_joint",
+                            "left_shoulder_yaw_joint",
+                            "left_elbow_joint",
+                            "left_wrist_.*",
+                            "waist_.*",
+                            "right_shoulder_pitch_joint",
+                            "right_shoulder_roll_joint",
+                            ])
         },
     )
     # dof_vel_l2 = RewTerm(func=mdp.joint_vel_l2, weight=-1e-5)
@@ -697,19 +461,21 @@ class G1Rewards:
         params={
             'asset_cfg':SceneEntityCfg(
                 'robot',
-                # joint_names=[".*_hip_yaw_joint",
-                #             ".*_hip_roll_joint",
-                #             ".*_hip_pitch_joint",
-                #             ".*_knee_joint",
-                #             ".*_ankle_pitch_joint", 
-                #             ".*_ankle_roll_joint",
-                #             "left_shoulder_pitch_joint",
-                #             "left_shoulder_roll_joint",
-                #             "left_shoulder_yaw_joint",
-                #             "left_elbow_joint",
-                #             "left_wrist_.*",
-                #             "waist_.*"])
-            )
+                joint_names=[".*_hip_yaw_joint",
+                            ".*_hip_roll_joint",
+                            ".*_hip_pitch_joint",
+                            ".*_knee_joint",
+                            ".*_ankle_pitch_joint", 
+                            ".*_ankle_roll_joint",
+                            "left_shoulder_pitch_joint",
+                            "left_shoulder_roll_joint",
+                            "left_shoulder_yaw_joint",
+                            "left_elbow_joint",
+                            "left_wrist_.*",
+                            "waist_.*",
+                            "right_shoulder_pitch_joint",
+                            "right_shoulder_roll_joint",
+                            ])
         },
     )
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.005)
@@ -759,13 +525,13 @@ class G1Rewards:
     )
     # Tracking rewards
     hand_pos_tracking = RewTerm(
-        func=position_command_error,
+        func=arm_track_env.position_command_error,
         # weight=-1,
         weight=0.,
         params={"command_name": "hands_pose"},
     )
     hand_ori_tracking = RewTerm(
-        func=orientation_command_error,
+        func=arm_track_env.orientation_command_error,
         # weight=-0.2,
         # weight=-0.5,
         weight=0.,
@@ -809,7 +575,7 @@ class G1Rewards:
     #     }
     # )
     zmp_supp_dist_v2 = RewTerm(
-        func=zmp_supp_dist_v2,
+        func=arm_track_env.zmp_supp_dist_v2,
         # weight=0.3,
         weight=0.0,
         # weight=0.,
@@ -854,9 +620,9 @@ class G1Rewards:
         },
     )
     approaching = RewTerm(
-        func=approaching_pose,
-        # weight=0.1,
-        weight=0.,
+        func=arm_track_env.approaching_pose,
+        # weight=0.,
+        weight=0.2,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot", 
@@ -869,18 +635,9 @@ class G1Rewards:
             "penalize_joint_limit": True,
         },
     )
-    approaching_bb = RewTerm(
-        func=hand_track_bb,
-        # weight=0.0,
-        weight=0.3,
-        # weight=1.,
-        params={
-            "command_name": "hands_pose"
-        },
-    )
 
     maintain_target = RewTerm(
-        func=maintain_target,
+        func=arm_track_env.maintain_target,
         weight=0.,
         # weight=0.5,
         params={
@@ -952,6 +709,7 @@ class CommandsCfg:
         # mode="cylinder",
         mode="cart",
         frame="foot",
+        # frame="z-inv",
         ranges=mdp.IKHandTrajCommandCfg.Ranges(
             # r_range=(0.5, 0.6),
             # r_range=(0.2, 0.6),
