@@ -40,8 +40,8 @@ from domi.sim.contact_sensor_extra import ContactSensorExtra, ContactSensorExtra
 
 from icecream import ic
 
-from .agents import standing_env_cfg as stand_env
-from .agents import arm_track_env_cfg as arm_track_env
+from . import standing_env_cfg as stand_env
+from . import arm_track_env_cfg as arm_track_env
 
 
     
