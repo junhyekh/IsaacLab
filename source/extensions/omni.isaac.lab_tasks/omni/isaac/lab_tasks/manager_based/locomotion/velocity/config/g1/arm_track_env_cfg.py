@@ -133,6 +133,18 @@ def approaching_pose(
 
     return rew
 
+def hand_track_bb(env: ManagerBasedRLEnv, 
+        command_name: str):
+    
+    command = env.command_manager.get_term(command_name)
+    hbb, gbb = command.get_current_bbox()
+
+    # extract the used quantities (to enable type-hinting)
+    # asset: Articulation = env.scene[asset_cfg.name]
+    diff = hbb - gbb
+    pos_error = th.norm(diff, dim=-1).mean(-1)
+    return th.exp(-50 * th.square(pos_error))
+
 
 def maintain_target(
         env: ManagerBasedRLEnv, 
@@ -306,34 +318,41 @@ class ActionsCfg:
                                                         ],
                                            scale=0.5,
                                            use_default_offset=True)
-    right_arm = mdp.PassiveIKActionCfg(
-            asset_name="robot",
-            command_name='hands_pose',
-            joint_names=["right_shoulder_pitch_joint",
+    # right_arm = mdp.PassiveIKActionCfg(
+    #         asset_name="robot",
+    #         command_name='hands_pose',
+    #         joint_names=["right_shoulder_pitch_joint",
+    #                     "right_shoulder_roll_joint",
+    #                     "right_shoulder_yaw_joint",
+    #                     "right_elbow_joint",
+    #                     "right_wrist_.*",],
+
+    #         body_name="right_hand_palm_link",
+    #         controller=DifferentialIKControllerCfg(
+    #             command_type="pose",
+    #             use_relative_mode=False,
+    #             ik_method="dls",
+    #             ik_params={"lambda_val": 0.1},
+    #             use_weighted_jacobian=True,
+    #             # use_weighted_jacobian=False,
+    #             weight_pos=[1.0, 1.0, 1.0, 1.0, 0., 0., 0.],
+    #             # weight_pos=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    #             weight_ori=[0., 0., 0., 0., 1.0, 1.0, 1.0],
+    #             # weight_ori=[0., 0., 0., 0., 0.1, 0.1, 0.1],
+    #             # weight_ori=[0., 0., 0., 0., 0., 0., 0.],
+    #             ),
+    #         scale=1.0,
+    #         compensate_gravity=True,
+    #     )
+    right_arm = mdp.RelativeJointPositionActionCfg(
+        asset_name="robot",
+        joint_names=["right_shoulder_pitch_joint",
                         "right_shoulder_roll_joint",
                         "right_shoulder_yaw_joint",
                         "right_elbow_joint",
                         "right_wrist_.*",],
-
-            body_name="right_hand_palm_link",
-            controller=DifferentialIKControllerCfg(
-                command_type="pose",
-                use_relative_mode=False,
-                ik_method="dls",
-                # ik_params={"lambda_val": 0.1},
-                ik_params={"lambda_val": 0.05},
-                use_weighted_jacobian=True,
-                # use_weighted_jacobian=False,
-                use_norm_clipping=False,
-                weight_pos=[1.0, 1.0, 1.0, 1.0, 0., 0., 0.],
-                # weight_pos=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-                weight_ori=[0., 0., 0., 0., 1.0, 1.0, 1.0],
-                # weight_ori=[0., 0., 0., 0., 0.1, 0.1, 0.1],
-                # weight_ori=[0., 0., 0., 0., 0., 0., 0.],
-                ),
-            scale=1.0,
-            compensate_gravity=True,
-        )
+                        scale=0.5,
+    )
 
 
 
@@ -367,7 +386,31 @@ class ObservationsCfg:
                 "right_foot_sensor_cfg": SceneEntityCfg("contact_right_foot"),
             },
         )
-        joint_pos = ObsTerm(func=mdp.joint_pos_rel)
+        joint_pos = ObsTerm(func=mdp.joint_pos_rel,
+                            params={
+                                'asset_cfg': SceneEntityCfg("robot",
+                                                            joint_names=[".*_hip_yaw_joint",
+                                                        ".*_hip_roll_joint",
+                                                        ".*_hip_pitch_joint",
+                                                        ".*_knee_joint",
+                                                        ".*_ankle_pitch_joint", 
+                                                        ".*_ankle_roll_joint",
+                                                        "left_shoulder_pitch_joint",
+                                                        "left_shoulder_roll_joint",
+                                                        "left_shoulder_yaw_joint",
+                                                        "left_elbow_joint",
+                                                        "left_wrist_.*",
+                                                        "waist_.*"])
+                            })
+        arm_joint = ObsTerm(func=mdp.joint_pos,
+                             params={
+                                'asset_cfg': SceneEntityCfg("robot",
+                                                            joint_names=["right_shoulder_pitch_joint",
+                                                            "right_shoulder_roll_joint",
+                                                            "right_shoulder_yaw_joint",
+                                                            "right_elbow_joint",
+                                                            "right_wrist_.*",])
+                            })
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
         actions = ObsTerm(func=mdp.last_action)
         # hands_command= ObsTerm(func=mdp.generated_commands, params={"command_name": "hands_pose"})
@@ -807,7 +850,7 @@ class G1Rewards:
     )
     approaching = RewTerm(
         func=approaching_pose,
-        weight=0.,
+        weight=0.1,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot", 
@@ -818,6 +861,20 @@ class G1Rewards:
                             "right_wrist_.*",]),
             "command_name": "hands_pose",
             "penalize_joint_limit": True,
+        },
+    )
+    approaching_bb = RewTerm(
+        func=hand_track_bb,
+        weight=0.0,
+        params={
+            "command_name": "hands_pose"
+        },
+    )
+    approaching_bb = RewTerm(
+        func=hand_track_bb,
+        weight=0.0,
+        params={
+            "command_name": "hands_pose"
         },
     )
 

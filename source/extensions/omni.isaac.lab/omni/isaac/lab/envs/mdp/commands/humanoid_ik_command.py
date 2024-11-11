@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import torch as th
 import numpy as np
 from collections.abc import Sequence
@@ -10,9 +11,13 @@ from omni.isaac.lab.managers import CommandTermCfg
 from omni.isaac.lab.assets import Articulation
 from omni.isaac.lab.managers import CommandTerm
 from omni.isaac.lab.markers import VisualizationMarkersCfg, VisualizationMarkers
-from omni.isaac.lab.markers.config import FRAME_MARKER_CFG, GREEN_ARROW_X_MARKER_CFG
+from omni.isaac.lab.markers.config import (FRAME_MARKER_CFG,
+                                           GREEN_ARROW_X_MARKER_CFG,
+                                           RAY_CASTER_MARKER_CFG)
 from omni.isaac.lab.utils import configclass
 import omni.isaac.lab.utils.math as math_utils
+import omni.isaac.lab.sim as sim_utils
+
 
 if TYPE_CHECKING:
     from omni.isaac.lab.envs import ManagerBasedEnv
@@ -214,8 +219,15 @@ class IKHandTrajCommandCfg(CommandTermCfg):
         prim_path="/Visuals/Command/body_pose")
     """The configuration for the current pose visualization marker. Defaults to FRAME_MARKER_CFG."""
 
+    vis_hand_bbox: bool = True
+    hand_bbox_file: str = '/input/right_hand.npy'
+
+    bbox_vis_ref_cfg = RAY_CASTER_MARKER_CFG.replace(
+                                                    prim_path=f"/Visuals/Command/bbox")
+    bbox_vis_ref_cfg.markers['hit'] .radius=0.01
     goal_pose_visualizer_cfg.markers["frame"].scale = (0.1, 0.1, 0.1)
     current_pose_visualizer_cfg.markers["frame"].scale = (0.1, 0.1, 0.1)
+
 
 
 class IKHandTrajCommand(CommandTerm):
@@ -268,6 +280,10 @@ class IKHandTrajCommand(CommandTerm):
         if self.cfg.resampling_time_range[0] != self.cfg.resampling_time_range[1]:
             raise ValueError("Resampling time range should be unique in order to compute lerp")
         self.resampling_time = self.cfg.resampling_time_range[0]
+
+        hand_bboxes = th.as_tensor(np.load(cfg.hand_bbox_file),
+                        dtype=th.float, device=self.device)
+        self._hand_bboxes = hand_bboxes[None].repeat(self.num_envs, 1, 1)
 
         # Metrics
         self.metrics["position_error_left"] = th.zeros(self.num_envs, device=self.device)
@@ -550,6 +566,21 @@ class IKHandTrajCommand(CommandTerm):
                 self.lerp_command_s_right[:, :3],
                 self.lerp_command_s_right[:, 3:])
 
+    # TODO Need to support both hand 
+    def get_current_bbox(self):
+        body_pose_w_right = self.robot.data.body_state_w[:, self.right_hand_idx]
+        #right hand
+        rhb = math_utils.transform_points(
+            self._hand_bboxes,
+            body_pose_w_right[..., :3],
+            body_pose_w_right[..., 3:7]
+        )
+        rgb = math_utils.transform_points(
+            self._hand_bboxes,
+            self.lerp_command_w_right[..., :3],
+            self.lerp_command_w_right[..., 3:7]
+        )
+        return rhb, rgb
 
     def _set_debug_vis_impl(self, debug_vis: bool):
         # Create markers if necessary for the first time
@@ -571,12 +602,34 @@ class IKHandTrajCommand(CommandTerm):
             self.goal_pose_visualizer_right.set_visibility(True)
             # self.current_pose_visualizer_left.set_visibility(True)
             self.current_pose_visualizer_right.set_visibility(True)
+            if self.cfg.vis_hand_bbox:
+                if not hasattr(self, "bbox_visualizer"):
+                    colors = list(itertools.product([0., 1.], repeat=3))
+                    if hasattr(self, '_hand_bboxes'):
+                        n_points = self._hand_bboxes.shape[1]
+                    else:
+                        bbox = np.load(self.cfg.hand_bbox_file)
+                        n_points = bbox.shape[0]
+                    self.bbox_visualizer = []
+                    for i in range(n_points):
+                        cc = self.cfg.bbox_vis_ref_cfg.replace(
+                            prim_path=f"/Visuals/Command/bbox_{i}"
+                        )
+                        cc.markers['hit'].visual_material.diffuse_color=colors[i]
+                        self.bbox_visualizer.append(VisualizationMarkers(cc))
+                for v in self.bbox_visualizer:
+                    v.set_visibility(True)
+                
         else:
             if hasattr(self, "goal_pose_visualizer_left"):
                 # self.goal_pose_visualizer_left.set_visibility(False)
                 self.goal_pose_visualizer_right.set_visibility(False)
                 # self.current_pose_visualizer_left.set_visibility(False)
                 self.current_pose_visualizer_right.set_visibility(False)
+            if self.cfg.vis_hand_bbox:
+                if hasattr(self, "bbox_visualizer"):
+                    for v in self.bbox_visualizer:
+                        v.set_visibility(False)
 
     def _debug_vis_callback(self, event):
         # Check if robot is initialized
@@ -597,3 +650,23 @@ class IKHandTrajCommand(CommandTerm):
         self.current_pose_visualizer_right.visualize(
             body_pose_w_right[:, :3], body_pose_w_right[:, 3:7]
         )
+        if self.cfg.vis_hand_bbox:
+            #right hand
+            rhb, rgb = self.get_current_bbox()
+            lhbb = self._hand_bboxes.clone()
+            lhbb[..., 1] *=-1
+            body_pose_w_left = self.robot.data.body_state_w[:, self.left_hand_idx]
+            lhb = math_utils.transform_points(
+                lhbb,
+                body_pose_w_left[..., :3],
+                body_pose_w_left[..., 3:7]
+            )
+            lgb = math_utils.transform_points(
+                lhbb,
+                self.lerp_command_w_left[..., :3],
+                self.lerp_command_w_left[..., 3:7]
+            )
+
+            bb = th.cat([rhb, rgb, lhb, lgb], dim=0)
+            for idx, vis in enumerate(self.bbox_visualizer):
+                vis.visualize(bb[..., idx, :])
