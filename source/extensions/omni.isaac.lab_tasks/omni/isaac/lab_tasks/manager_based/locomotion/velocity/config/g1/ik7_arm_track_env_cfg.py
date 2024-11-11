@@ -166,7 +166,7 @@ class ObservationsCfg:
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
         actions = ObsTerm(func=mdp.last_action)
-        # hands_command= ObsTerm(func=mdp.generated_commands, params={"command_name": "hands_pose"})
+        hands_command= ObsTerm(func=mdp.generated_commands, params={"command_name": "hands_pose"})
         # momentum_change = ObsTerm(
         #     func=arm_track_env.relative_arm_mom_dev,
         #     params={

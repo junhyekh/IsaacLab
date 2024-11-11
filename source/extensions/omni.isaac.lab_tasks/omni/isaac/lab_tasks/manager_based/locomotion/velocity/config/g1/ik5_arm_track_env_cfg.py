@@ -40,8 +40,8 @@ from domi.sim.contact_sensor_extra import ContactSensorExtra, ContactSensorExtra
 
 from icecream import ic
 
-from . import standing_env_cfg as stand_env
-from . import arm_track_env_cfg as arm_track_env
+from .agents import standing_env_cfg as stand_env
+from .agents import arm_track_env_cfg as arm_track_env
 
 
     
@@ -169,7 +169,7 @@ class ObservationsCfg:
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
         actions = ObsTerm(func=mdp.last_action)
-        # hands_command= ObsTerm(func=mdp.generated_commands, params={"command_name": "hands_pose"})
+        hands_command= ObsTerm(func=mdp.generated_commands, params={"command_name": "hands_pose"})
         # momentum_change = ObsTerm(
         #     func=arm_track_env.relative_arm_mom_dev,
         #     params={
