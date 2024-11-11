@@ -4,12 +4,13 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 from dataclasses import MISSING
+from typing import Literal
 
 from omni.isaac.lab.controllers import DifferentialIKControllerCfg
 from omni.isaac.lab.managers.action_manager import ActionTerm, ActionTermCfg
 from omni.isaac.lab.utils import configclass
 
-from . import binary_joint_actions, joint_actions, joint_actions_to_limits, non_holonomic_actions, task_space_actions
+from . import binary_joint_actions, joint_actions, joint_actions_to_limits, non_holonomic_actions, task_space_actions, learnable_actions
 
 ##
 # Joint actions.
@@ -265,3 +266,15 @@ class ResidualJointPositionActionCfg(JointActionCfg):
 
     use_clipping: bool = False
     clip_range: tuple[float, float] = (-0.3, 0.3)
+
+@configclass
+class LearnableControlCfg(ActionTermCfg):
+
+    actions: dict[str, ActionTermCfg] = MISSING
+    obs_group: str = MISSING
+    ckpt: str = MISSING
+
+    loading_type: Literal['rsl_rl', 'direct'] = 'rsl_rl'
+
+    class_type: type[ActionTerm] = learnable_actions.LearnableControl
+    
