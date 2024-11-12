@@ -264,6 +264,19 @@ def rel_joint_torques_l2(
     rew = th.sum(th.square(rel_torque[:, asset_cfg.joint_ids]), dim=1)
     # extract the used quantities (to enable type-hinting)
     return rew
+
+def jump(
+        env: ManagerBasedRLEnv, 
+        start_termination: int = 30., 
+        sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces", body_names=".*_ankle_roll_link")
+        ) -> th.Tensor:
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    # compute the reward
+    contact_time = contact_sensor.data.current_contact_time[:, sensor_cfg.body_ids]
+    in_contact = contact_time > 0.0
+    jump = th.sum(in_contact.int(), dim=1) == 0
+    return th.logical_and(jump, env.episode_length_buf >= start_termination)
+
     
 @configclass
 class MySceneCfg(InteractiveSceneCfg):

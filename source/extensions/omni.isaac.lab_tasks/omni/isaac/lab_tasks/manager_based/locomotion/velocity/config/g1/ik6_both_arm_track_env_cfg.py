@@ -716,6 +716,9 @@ class TerminationsCfg:
     #     func=max_consecutive_success, 
     #     params={"num_success": 100, "command_name": "global_hand_goal"}
     # )
+    jump = DoneTerm(
+        func=arm_track_env.jump
+    )
 
 @configclass
 class CommandsCfg:
