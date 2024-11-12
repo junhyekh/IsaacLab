@@ -319,26 +319,26 @@ class MySceneCfg(InteractiveSceneCfg):
 class ActionsCfg:
     """Action specifications for the MDP."""
 
-    joint_pos = mdp.JointPositionActionCfg(asset_name="robot",
-                                           joint_names=[".*"],
-                                           scale=0.5,
-                                           use_default_offset=True)
     # joint_pos = mdp.JointPositionActionCfg(asset_name="robot",
-    #                                        joint_names=[".*_hip_yaw_joint",
-    #                                                     ".*_hip_roll_joint",
-    #                                                     ".*_hip_pitch_joint",
-    #                                                     ".*_knee_joint",
-    #                                                     ".*_ankle_pitch_joint", 
-    #                                                     ".*_ankle_roll_joint",
-    #                                                     "left_shoulder_pitch_joint",
-    #                                                     "left_shoulder_roll_joint",
-    #                                                     "left_shoulder_yaw_joint",
-    #                                                     "left_elbow_joint",
-    #                                                     "left_wrist_.*",
-    #                                                     "waist_.*"
-    #                                                     ],
+    #                                        joint_names=[".*"],
     #                                        scale=0.5,
     #                                        use_default_offset=True)
+    joint_pos = mdp.JointPositionActionCfg(asset_name="robot",
+                                           joint_names=[".*_hip_yaw_joint",
+                                                        ".*_hip_roll_joint",
+                                                        ".*_hip_pitch_joint",
+                                                        ".*_knee_joint",
+                                                        ".*_ankle_pitch_joint", 
+                                                        ".*_ankle_roll_joint",
+                                                        "left_shoulder_pitch_joint",
+                                                        "left_shoulder_roll_joint",
+                                                        "left_shoulder_yaw_joint",
+                                                        "left_elbow_joint",
+                                                        "left_wrist_.*",
+                                                        "waist_.*"
+                                                        ],
+                                           scale=0.5,
+                                           use_default_offset=True)
     # right_arm = mdp.PassiveIKActionCfg(
     #         asset_name="robot",
     #         command_name='hands_pose',
@@ -365,15 +365,15 @@ class ActionsCfg:
     #         scale=1.0,
     #         compensate_gravity=True,
     #     )
-    # right_arm = mdp.RelativeJointPositionActionCfg(
-    #     asset_name="robot",
-    #     joint_names=["right_shoulder_pitch_joint",
-    #                     "right_shoulder_roll_joint",
-    #                     "right_shoulder_yaw_joint",
-    #                     "right_elbow_joint",
-    #                     "right_wrist_.*",],
-    #                     scale=0.5,
-    # )
+    right_arm = mdp.RelativeJointPositionActionCfg(
+        asset_name="robot",
+        joint_names=["right_shoulder_pitch_joint",
+                        "right_shoulder_roll_joint",
+                        "right_shoulder_yaw_joint",
+                        "right_elbow_joint",
+                        "right_wrist_.*",],
+                        scale=0.3,
+    )
 
 
 
@@ -423,7 +423,10 @@ class ObservationsCfg:
                                                         "left_wrist_.*",
                                                         "waist_.*"])
                             })
-        arm_joint = ObsTerm(func=mdp.joint_pos,
+        arm_joint_hist = mdp.HistoryObsCfg(func=mdp.HistoryObs,
+                            func_target = mdp.joint_pos,
+                            history_len = 8,
+                            reset_type = 'prev',
                              params={
                                 'asset_cfg': SceneEntityCfg("robot",
                                                             joint_names=["right_shoulder_pitch_joint",
@@ -432,6 +435,15 @@ class ObservationsCfg:
                                                             "right_elbow_joint",
                                                             "right_wrist_.*",])
                             })
+        # arm_joint = ObsTerm(func=mdp.joint_pos,
+        #                      params={
+        #                         'asset_cfg': SceneEntityCfg("robot",
+        #                                                     joint_names=["right_shoulder_pitch_joint",
+        #                                                     "right_shoulder_roll_joint",
+        #                                                     "right_shoulder_yaw_joint",
+        #                                                     "right_elbow_joint",
+        #                                                     "right_wrist_.*",])
+        #                     })
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
         actions = ObsTerm(func=mdp.last_action)
         hands_command= ObsTerm(func=mdp.generated_commands, params={"command_name": "hands_pose"})
@@ -892,7 +904,7 @@ class G1Rewards:
     approaching_bb = RewTerm(
         func=hand_track_bb,
         # weight=0.0,
-        weight=0.3,
+        weight=0.0,
         # weight=1.,
         params={
             "command_name": "hands_pose"
@@ -991,6 +1003,16 @@ class CommandsCfg:
             y_right_range=(-0.45, 0.),
 
         ),
+    )
+
+@configclass
+class CurriculumCfg:
+    """Curriculum terms for the MDP."""
+    joint_vel = CurrTerm(
+        func=mdp.modify_reward_weight_step, params={"term_name": "approaching_bb",
+                                                    "dw": 0.1,
+                                                    "max_w": 0.5,
+                                                    "num_steps": 7200}
     )
 
 G1_29_FIXED_HAND_CFG =ArticulationCfg(
@@ -1117,7 +1139,7 @@ class G1StandingEnvCfg(ManagerBasedRLEnvCfg):
     # commands: CommandsCfg = CommandsCfg()
     # MDP settings
     events: EventCfg = EventCfg()
-    # curriculum: CurriculumCfg = CurriculumCfg()
+    curriculum: CurriculumCfg = CurriculumCfg()
 
     rewards: G1Rewards = G1Rewards()
     terminations: TerminationsCfg = TerminationsCfg()

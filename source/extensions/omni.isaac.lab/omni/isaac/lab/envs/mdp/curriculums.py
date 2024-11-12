@@ -34,3 +34,26 @@ def modify_reward_weight(env: ManagerBasedRLEnv, env_ids: Sequence[int], term_na
         # update term settings
         term_cfg.weight = weight
         env.reward_manager.set_term_cfg(term_name, term_cfg)
+
+def modify_reward_weight_step(env: ManagerBasedRLEnv,
+                              env_ids: Sequence[int],
+                              term_name: str,
+                              dw: float,
+                              max_w: float,
+                              num_steps: int):
+    """Curriculum that modifies a reward weight a given number of steps.
+
+    Args:
+        env: The learning environment.
+        env_ids: Not used since all environments are affected.
+        term_name: The name of the reward term.
+        weight: The weight of the reward term.
+        num_steps: The number of steps after which the change should be applied.
+    """
+    if (env.common_step_counter+1) % num_steps==0:
+        # obtain term settings
+        term_cfg = env.reward_manager.get_term_cfg(term_name)
+        # update term settings
+        term_cfg.weight += dw
+        term_cfg.weight = min(term_cfg.weight, max_w)
+        env.reward_manager.set_term_cfg(term_name, term_cfg)

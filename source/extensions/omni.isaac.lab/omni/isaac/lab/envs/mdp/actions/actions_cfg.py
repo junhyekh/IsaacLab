@@ -4,14 +4,18 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 from dataclasses import MISSING
-from typing import Literal
+from typing import Literal, Any
+from collections.abc import Callable
+import torch as th
 
 from omni.isaac.lab.controllers import DifferentialIKControllerCfg
 from omni.isaac.lab.managers.action_manager import ActionTerm, ActionTermCfg
 from omni.isaac.lab.utils import configclass
+from omni.isaac.lab.managers import SceneEntityCfg
 
-from . import binary_joint_actions, joint_actions, joint_actions_to_limits, non_holonomic_actions, task_space_actions, learnable_actions
+from . import binary_joint_actions, joint_actions, joint_actions_to_limits, non_holonomic_actions, task_space_actions, learnable_actions, command_actions
 
+from . import utils
 ##
 # Joint actions.
 ##
@@ -268,7 +272,33 @@ class ResidualJointPositionActionCfg(JointActionCfg):
     clip_range: tuple[float, float] = (-0.3, 0.3)
 
 @configclass
-class LearnableControlCfg(ActionTermCfg):
+class CommandActionCfg(ActionTermCfg):
+    scale: float = 1.0
+    offset: float = 0.0
+
+    class_type: type[ActionTerm] = command_actions.CommandActionBase
+    rescale_to_limits: bool = True
+
+@configclass
+class BodyCommandActionCfg(CommandActionCfg):
+    class_type: type[ActionTerm] = command_actions.BodyCommandAction
+    # TODO currently only support relative pose
+    # Need to be extended to support abs too
+    # i.e. pos_rel / pos_abs
+    control_type: dict[str, Literal['pos', 'pose']] = MISSING
+
+    @configclass
+    class Ranges:
+        dx: tuple[float, float] | list[tuple[float, float]] = MISSING
+        dr: tuple[float, float] | list[tuple[float, float]] = MISSING
+
+    ranges: dict[str, Ranges] = MISSING
+
+    frame_func: Callable[..., th.Tensor] = utils.get_base_frame
+    frame_func_param: dict[str, Any | SceneEntityCfg] = dict()
+
+@configclass
+class NetControllerCfg(ActionTermCfg):
 
     actions: dict[str, ActionTermCfg] = MISSING
     obs_group: str = MISSING
@@ -276,5 +306,10 @@ class LearnableControlCfg(ActionTermCfg):
 
     loading_type: Literal['rsl_rl', 'direct'] = 'rsl_rl'
 
-    class_type: type[ActionTerm] = learnable_actions.LearnableControl
-    
+    class_type: type[ActionTerm] = learnable_actions.NetController
+
+@configclass
+class NetControllerWCommandCfg(NetControllerCfg):
+
+    class_type: type[ActionTerm] = learnable_actions.NetControllerWCommand
+    command_actions: dict[str, CommandActionCfg] = dict()
