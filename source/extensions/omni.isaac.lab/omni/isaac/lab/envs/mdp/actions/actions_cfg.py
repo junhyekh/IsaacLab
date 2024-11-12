@@ -250,3 +250,15 @@ class DifferentialInverseKinematicsActionCfg(ActionTermCfg):
     """The configuration for the differential IK controller."""
     compensate_gravity: bool = False
     """If true, gravity compensation torque will be automatically added"""
+
+
+"""
+Residual action
+"""
+
+@configclass
+class ResidualJointPositionActionCfg(JointActionCfg):
+   
+    class_type: type[ActionTerm] = joint_actions.ResidualJointPositionAction
+
+    use_zero_offset: bool = True

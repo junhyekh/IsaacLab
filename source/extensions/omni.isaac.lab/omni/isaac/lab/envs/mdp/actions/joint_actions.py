@@ -206,3 +206,22 @@ class JointEffortAction(JointAction):
     def apply_actions(self):
         # set joint effort targets
         self._asset.set_joint_effort_target(self.processed_actions, joint_ids=self._joint_ids)
+
+class ResidualJointPositionAction(JointAction):
+
+    cfg: actions_cfg.ResidualJointPositionActionCfg
+    """The configuration of the action term."""
+
+    def __init__(self, cfg: actions_cfg.ResidualJointPositionActionCfg,
+                 env: ManagerBasedEnv):
+        # initialize the action term
+        super().__init__(cfg, env)
+        # use zero offset for relative position
+        if cfg.use_zero_offset:
+            self._offset = 0.0
+
+    def apply_actions(self):
+        # add current joint positions to the processed actions
+        current_actions = self.processed_actions + self._asset.data.joint_pos_target[:, self._joint_ids]
+        # set position targets
+        self._asset.set_joint_position_target(current_actions, joint_ids=self._joint_ids)
