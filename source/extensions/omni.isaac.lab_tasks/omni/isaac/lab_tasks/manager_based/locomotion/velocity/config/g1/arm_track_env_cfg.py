@@ -104,8 +104,10 @@ def approaching_pose(
         penalize_joint_limit: bool = True
         ) -> th.Tensor:
     # extract the asset (to enable type hinting)
-    command = env.command_manager.get_command(command_name)
-    pos_error = command[..., :3].norm(dim=-1)
+    command = env.command_manager.get_term(command_name)
+    hbb, gbb = command.get_current_bbox()
+    diff = hbb - gbb
+    pos_error = th.norm(diff, dim=-1).mean(-1)
 
     # extract the used quantities (to enable type-hinting)
     asset: Articulation = env.scene[asset_cfg.name]
@@ -120,8 +122,8 @@ def approaching_pose(
 
     if penalize_joint_limit:
         pos_error = th.where(out_of_limits, th.ones_like(pos_error), pos_error)
-    # rew = th.exp(-50 * th.square(pos_error))
-    rew = th.exp(-10 * th.square(pos_error))
+    rew = th.exp(-50 * th.square(pos_error))
+    # rew = th.exp(-30 * th.square(pos_error))
     if "Arm_joint_limit" not in env.reward_manager.episode_stat_sums.keys():
         env.reward_manager.episode_stat_sums["Arm_joint_limit"] = \
             th.zeros(env.num_envs, dtype=th.float, device=env.device)

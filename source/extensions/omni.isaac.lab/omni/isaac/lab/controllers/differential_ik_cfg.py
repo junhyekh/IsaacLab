@@ -60,8 +60,8 @@ class DifferentialIKControllerCfg:
     weight_pos: List[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
     weight_ori: List[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 
-    use_norm_clipping: bool = True
-    max_delta_norm: float = 0.5
+    use_max_clipping: bool = False
+    max_delta_pos: float = 0.5
 
     def __post_init__(self):
         # check valid input

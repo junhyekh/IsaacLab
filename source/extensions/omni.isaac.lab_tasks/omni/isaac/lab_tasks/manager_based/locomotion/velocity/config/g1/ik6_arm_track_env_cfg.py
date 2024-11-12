@@ -122,7 +122,8 @@ class ActionsCfg:
                 ik_params={"lambda_val": 0.05},
                 # use_weighted_jacobian=True,
                 use_weighted_jacobian=False,
-                use_norm_clipping=False,
+                use_max_clipping=False,
+                max_delta_pos=0.5,
                 weight_pos=[1.0, 1.0, 1.0, 0., 0., 0.],
                 # weight_pos=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
                 weight_ori=[0., 0., 0., 1.0, 1.0, 1.0],
@@ -703,6 +704,7 @@ class CommandsCfg:
         # mode="cylinder",
         mode="cart",
         frame="foot",
+        angle_noise=0.001,
         # frame="z-inv",
         ranges=mdp.IKHandTrajCommandCfg.Ranges(
             # r_range=(0.5, 0.6),

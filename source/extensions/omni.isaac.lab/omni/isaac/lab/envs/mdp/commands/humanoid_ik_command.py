@@ -208,6 +208,7 @@ class IKHandTrajCommandCfg(CommandTermCfg):
 
     # Configuration parameters for shifts and angle deltas
     angle_noise: float = 0.001 # Added angle noise in degrees
+    # angle_noise: float = 30. # Added angle noise in degrees
     spherical_z: float = 1.0 # Height of the spherical coordinate
 
     goal_pose_visualizer_cfg: VisualizationMarkersCfg = \
@@ -527,10 +528,11 @@ class IKHandTrajCommand(CommandTerm):
                 )
             
             _, _, left_euler = math_utils.euler_xyz_from_quat(
-                self.robot.data.body_state_w[:, self.left_foot_idx, 3:7]
+                math_utils.yaw_quat(self.robot.data.body_state_w[:, self.left_foot_idx, 3:7])
             )
             _, _, right_euler = math_utils.euler_xyz_from_quat(
-                self.robot.data.body_state_w[:, self.right_foot_idx, 3:7]
+                # self.robot.data.body_state_w[:, self.right_foot_idx, 3:7]
+                math_utils.yaw_quat(self.robot.data.body_state_w[:, self.right_foot_idx, 3:7])
             )
             
             self.cylinder_quat_w = math_utils.quat_from_euler_xyz(
