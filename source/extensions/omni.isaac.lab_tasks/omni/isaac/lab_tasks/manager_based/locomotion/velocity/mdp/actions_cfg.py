@@ -1,4 +1,5 @@
 from dataclasses import MISSING
+from typing import Literal
 
 from omni.isaac.lab.controllers import DifferentialIKControllerCfg
 from omni.isaac.lab.managers.action_manager import ActionTerm, ActionTermCfg
@@ -18,3 +19,4 @@ class PassiveIKActionCfg(DifferentialInverseKinematicsActionCfg):
     class_type: type[ActionTerm] = PassiveIKAction
 
     command_name: str = MISSING
+    control_arm: Literal["left", "right"] = MISSING

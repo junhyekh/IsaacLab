@@ -2,7 +2,7 @@ import math
 import numpy as np
 import torch as th
 from dataclasses import MISSING
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Literal
 from collections.abc import Sequence
 
 import omni.isaac.lab_tasks.manager_based.locomotion.velocity.mdp as mdp
@@ -101,11 +101,16 @@ def approaching_pose(
         asset_cfg: SceneEntityCfg,
         command_name: str,
         max_dist: float = 0.2,
-        penalize_joint_limit: bool = True
+        sigma: float = 50.,
+        penalize_joint_limit: bool = True,
+        arm: Literal["left", "right"] = "right"
         ) -> th.Tensor:
     # extract the asset (to enable type hinting)
-    command = env.command_manager.get_term(command_name)
-    hbb, gbb = command.get_current_bbox()
+    command: mdp.IKHandTrajCommand = env.command_manager.get_term(command_name)
+    command_name = f"get_bbox_{arm}"
+    func = getattr(command, command_name, None)
+    hbb, gbb = func()
+    # hbb, gbb = command.get_bbox_right()
     diff = hbb - gbb
     pos_error = th.norm(diff, dim=-1).mean(-1)
 
@@ -122,7 +127,7 @@ def approaching_pose(
 
     if penalize_joint_limit:
         pos_error = th.where(out_of_limits, th.ones_like(pos_error), pos_error)
-    rew = th.exp(-50 * th.square(pos_error))
+    rew = th.exp(-sigma * th.square(pos_error))
     # rew = th.exp(-30 * th.square(pos_error))
     if "Arm_joint_limit" not in env.reward_manager.episode_stat_sums.keys():
         env.reward_manager.episode_stat_sums["Arm_joint_limit"] = \
@@ -139,7 +144,7 @@ def hand_track_bb(env: ManagerBasedRLEnv,
         command_name: str):
     
     command = env.command_manager.get_term(command_name)
-    hbb, gbb = command.get_current_bbox()
+    hbb, gbb = command.get_bbox_right()
 
     # extract the used quantities (to enable type-hinting)
     # asset: Articulation = env.scene[asset_cfg.name]

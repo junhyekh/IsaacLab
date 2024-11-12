@@ -93,7 +93,10 @@ class PassiveIKAction(DifferentialInverseKinematicsAction):
 
         command_term: mdp.IKHandTrajCommand \
             = self._env.command_manager.get_term(command_name)
-        target = command_term.lerp_command_w_right.clone()
+        
+        command_name = f"lerp_command_w_{self.cfg.control_arm}"
+        target = getattr(command_term, command_name, None)
+        # target = command_term.lerp_command_w_right.clone()
 
         root_pose_w = self._asset.data.root_state_w[:, :7]
         # compute the pose of the body in the root frame

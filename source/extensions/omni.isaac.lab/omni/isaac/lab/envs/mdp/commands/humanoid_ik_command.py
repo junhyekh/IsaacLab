@@ -435,7 +435,7 @@ class IKHandTrajCommand(CommandTerm):
 
             noise_left = th.empty((num_envs, 3), device=device).uniform_(
                 -np.pi * self.cfg.angle_noise/180., 
-                -np.pi * self.cfg.angle_noise/180.)
+                np.pi * self.cfg.angle_noise/180.)
             next_euler_s_left = math_utils.wrap_to_pi(next_euler_s_left+noise_left)
 
             self.next_command_s_left[env_ids, 3:7] = math_utils.quat_from_euler_xyz(
@@ -459,7 +459,7 @@ class IKHandTrajCommand(CommandTerm):
 
             noise_right = th.empty((num_envs, 3), device=device).uniform_(
                 -np.pi * self.cfg.angle_noise/180., 
-                -np.pi * self.cfg.angle_noise/180.)
+                np.pi * self.cfg.angle_noise/180.)
             next_euler_s_right = math_utils.wrap_to_pi(next_euler_s_right+noise_right)
 
             self.next_command_s_right[env_ids, 3:7] = math_utils.quat_from_euler_xyz(
@@ -482,7 +482,7 @@ class IKHandTrajCommand(CommandTerm):
 
             noise_left = th.empty((num_envs, 3), device=device).uniform_(
                 -np.pi * self.cfg.angle_noise/180., 
-                -np.pi * self.cfg.angle_noise/180.)
+                np.pi * self.cfg.angle_noise/180.)
             next_euler_s_left = math_utils.wrap_to_pi(next_euler_s_left+noise_left)
 
             self.next_command_s_left[env_ids, 3:7] = math_utils.quat_from_euler_xyz(
@@ -496,8 +496,9 @@ class IKHandTrajCommand(CommandTerm):
                 *self.cfg.ranges.x_range)
             next_pos_s_right[..., 1] = th.empty(num_envs, device=device).uniform_(
                 *self.cfg.ranges.y_right_range)
-            next_pos_s_right[..., 2] = th.empty(num_envs, device=device).uniform_(
-                *self.cfg.ranges.z_range)
+            # next_pos_s_right[..., 2] = th.empty(num_envs, device=device).uniform_(
+            #     *self.cfg.ranges.z_range)
+            next_pos_s_right[..., 2] = next_pos_s_left[..., 2].clone()
 
             self.next_command_s_right[env_ids, :3]= next_pos_s_right
 
@@ -505,7 +506,7 @@ class IKHandTrajCommand(CommandTerm):
 
             noise_right = th.empty((num_envs, 3), device=device).uniform_(
                 -np.pi * self.cfg.angle_noise/180., 
-                -np.pi * self.cfg.angle_noise/180.)
+                np.pi * self.cfg.angle_noise/180.)
             next_euler_s_right = math_utils.wrap_to_pi(next_euler_s_right+noise_right)
 
             self.next_command_s_right[env_ids, 3:7] = math_utils.quat_from_euler_xyz(
@@ -538,7 +539,7 @@ class IKHandTrajCommand(CommandTerm):
             self.cylinder_quat_w = math_utils.quat_from_euler_xyz(
                 th.zeros_like(left_euler),
                 th.zeros_like(left_euler),
-                0.5*(left_euler + right_euler)
+                math_utils.wrap_to_pi(0.5*(left_euler + right_euler))
             )
 
     def _update_command(self):
@@ -580,7 +581,7 @@ class IKHandTrajCommand(CommandTerm):
                 self.lerp_command_s_right[:, 3:])
 
     # TODO Need to support both hand 
-    def get_current_bbox(self):
+    def get_bbox_right(self):
         body_pose_w_right = self.robot.data.body_state_w[:, self.right_hand_idx]
         #right hand
         rhb = math_utils.transform_points(
@@ -592,6 +593,21 @@ class IKHandTrajCommand(CommandTerm):
             self._hand_bboxes,
             self.lerp_command_w_right[..., :3],
             self.lerp_command_w_right[..., 3:7]
+        )
+        return rhb, rgb
+
+    def get_bbox_left(self):
+        body_pose_w_left = self.robot.data.body_state_w[:, self.left_hand_idx]
+        #left hand
+        rhb = math_utils.transform_points(
+            self._hand_bboxes,
+            body_pose_w_left[..., :3],
+            body_pose_w_left[..., 3:7]
+        )
+        rgb = math_utils.transform_points(
+            self._hand_bboxes,
+            self.lerp_command_w_left[..., :3],
+            self.lerp_command_w_left[..., 3:7]
         )
         return rhb, rgb
 
@@ -667,7 +683,7 @@ class IKHandTrajCommand(CommandTerm):
         )
         if self.cfg.vis_hand_bbox:
             #right hand
-            rhb, rgb = self.get_current_bbox()
+            rhb, rgb = self.get_bbox_right()
             lhbb = self._hand_bboxes.clone()
             lhbb[..., 1] *=-1
             body_pose_w_left = self.robot.data.body_state_w[:, self.left_hand_idx]

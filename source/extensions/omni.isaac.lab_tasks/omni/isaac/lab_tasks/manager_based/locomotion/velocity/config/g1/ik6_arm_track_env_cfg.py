@@ -112,6 +112,7 @@ class ActionsCfg:
                         "right_shoulder_yaw_joint",
                         "right_elbow_joint",
                         "right_wrist_.*",],
+            control_arm="right",
 
             body_name="right_hand_palm_link",
             controller=DifferentialIKControllerCfg(
