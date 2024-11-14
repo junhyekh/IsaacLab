@@ -262,3 +262,6 @@ class ResidualJointPositionActionCfg(JointActionCfg):
     class_type: type[ActionTerm] = joint_actions.ResidualJointPositionAction
 
     use_zero_offset: bool = True
+
+    use_clipping: bool = False
+    clip_range: tuple[float, float] = (-0.3, 0.3)

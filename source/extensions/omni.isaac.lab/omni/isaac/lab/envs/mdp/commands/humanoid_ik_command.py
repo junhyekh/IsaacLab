@@ -286,6 +286,12 @@ class IKHandTrajCommand(CommandTerm):
         self.cylinder_pos_w = th.zeros(self.num_envs, 3, device=self.device)
         self.cylinder_quat_w = th.zeros(self.num_envs, 4, device=self.device)
 
+        # Hands pose wrt **cylindrical frame**
+        self.pos_hand_s_left = th.zeros(self.num_envs, 3, device=self.device)
+        self.pos_hand_s_right = th.zeros(self.num_envs, 3, device=self.device)
+        self.quat_hand_s_left = th.zeros(self.num_envs, 4, device=self.device)
+        self.quat_hand_s_right = th.zeros(self.num_envs, 4, device=self.device)
+
 
         if self.cfg.resampling_time_range[0] != self.cfg.resampling_time_range[1]:
             raise ValueError("Resampling time range should be unique in order to compute lerp")
@@ -319,27 +325,27 @@ class IKHandTrajCommand(CommandTerm):
         self._update_command()
 
         # Here, we should represent the pose delta in the base frame(or cylinder frame)
-        pos_hand_s_left, quat_hand_s_left = math_utils.subtract_frame_transforms(
+        self.pos_hand_s_left, self.quat_hand_s_left = math_utils.subtract_frame_transforms(
             self.cylinder_pos_w,
             self.cylinder_quat_w,
             self.robot.data.body_state_w[:, self.left_hand_idx, :3],
             self.robot.data.body_state_w[:, self.left_hand_idx, 3:7]
         )
         pos_delta_s_left, rot_delta_s_left = math_utils.compute_pose_error(
-            pos_hand_s_left,
-            quat_hand_s_left,
+            self.pos_hand_s_left,
+            self.quat_hand_s_left,
             self.lerp_command_s_left[:, :3],
             self.lerp_command_s_left[:, 3:],
         )
-        pos_hand_s_right, quat_hand_s_right = math_utils.subtract_frame_transforms(
+        self.pos_hand_s_right, self.quat_hand_s_right = math_utils.subtract_frame_transforms(
             self.cylinder_pos_w,
             self.cylinder_quat_w,
             self.robot.data.body_state_w[:, self.right_hand_idx, :3],
             self.robot.data.body_state_w[:, self.right_hand_idx, 3:7]
         )
         pos_delta_s_right, rot_delta_s_right = math_utils.compute_pose_error(
-            pos_hand_s_right,
-            quat_hand_s_right,
+            self.pos_hand_s_right,
+            self.quat_hand_s_right,
             self.lerp_command_s_right[:, :3],
             self.lerp_command_s_right[:, 3:],
         )
@@ -349,6 +355,22 @@ class IKHandTrajCommand(CommandTerm):
         axa_delta_s_right = math_utils.wrap_to_pi(rot_delta_s_right)
 
         return th.cat((pos_delta_s_right, axa_delta_s_right, pos_delta_s_left, axa_delta_s_left), dim=-1)
+    
+    def hand_pose_in_attached_frame(self):
+        """
+        Returns the computed hand pose wrt to the attached frame
+        Should be called after calling command function
+        """
+        hand_axa_left_s = math_utils.wrap_to_pi(
+            math_utils.axis_angle_from_quat(self.quat_hand_s_left))
+        hand_axa_right_s = math_utils.wrap_to_pi(
+            math_utils.axis_angle_from_quat(self.quat_hand_s_right))
+
+        hand_pose_b = th.cat(
+            (self.pos_hand_s_right, self.pos_hand_s_left, hand_axa_left_s, hand_axa_right_s),
+            dim=-1)
+        
+        return hand_pose_b
 
     """
     Implementation specific functions.
@@ -535,11 +557,14 @@ class IKHandTrajCommand(CommandTerm):
                 # self.robot.data.body_state_w[:, self.right_foot_idx, 3:7]
                 math_utils.yaw_quat(self.robot.data.body_state_w[:, self.right_foot_idx, 3:7])
             )
-            
+            # Compute average angle of two euler angles
+            avg_cos = (th.cos(left_euler) + th.cos(right_euler)) / 2
+            avg_sin = (th.sin(left_euler) + th.sin(right_euler)) / 2
+
             self.cylinder_quat_w = math_utils.quat_from_euler_xyz(
                 th.zeros_like(left_euler),
                 th.zeros_like(left_euler),
-                math_utils.wrap_to_pi(0.5*(left_euler + right_euler))
+                th.atan2(avg_sin, avg_cos)
             )
 
     def _update_command(self):

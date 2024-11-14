@@ -219,9 +219,23 @@ class ResidualJointPositionAction(JointAction):
         # use zero offset for relative position
         if cfg.use_zero_offset:
             self._offset = 0.0
+    
+    
+    def process_actions(self, actions: torch.Tensor):
+        super().process_actions(actions)  # Call the base class's processing first
+
+        if self.cfg.use_clipping:
+            self._processed_actions = torch.clamp(
+                self._processed_actions, 
+                min= self.cfg.clip_range[0], 
+                max= self.cfg.clip_range[1])
+            
 
     def apply_actions(self):
         # add current joint positions to the processed actions
+        from icecream import ic
         current_actions = self.processed_actions + self._asset.data.joint_pos_target[:, self._joint_ids]
         # set position targets
+        # from icecream import ic
+        # ic(self.processed_actions , self._asset.data.joint_pos_target[:, self._joint_ids], self._joint_ids)
         self._asset.set_joint_position_target(current_actions, joint_ids=self._joint_ids)
