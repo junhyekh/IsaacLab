@@ -417,19 +417,19 @@ class G1Rewards:
         params={
             'asset_cfg':SceneEntityCfg(
                 'robot',
-                # joint_names=[".*_hip_yaw_joint",
-                #             ".*_hip_roll_joint",
-                #             ".*_hip_pitch_joint",
-                #             ".*_knee_joint",
-                #             ".*_ankle_pitch_joint", 
-                #             ".*_ankle_roll_joint",
-                #             "left_shoulder_pitch_joint",
-                #             "left_shoulder_roll_joint",
-                #             "left_shoulder_yaw_joint",
-                #             "left_elbow_joint",
-                #             "left_wrist_.*",
-                #             "waist_.*"])
-                joint_names=[".*"])
+                joint_names=[".*_hip_yaw_joint",
+                            ".*_hip_roll_joint",
+                            ".*_hip_pitch_joint",
+                            ".*_knee_joint",
+                            ".*_ankle_pitch_joint", 
+                            ".*_ankle_roll_joint",
+                            "left_shoulder_pitch_joint",
+                            "left_shoulder_roll_joint",
+                            "left_shoulder_yaw_joint",
+                            "left_elbow_joint",
+                            "left_wrist_.*",
+                            "waist_.*"])
+                # joint_names=[".*"])
         },
     )
     ankle_dof_torques_l2 = RewTerm(
@@ -479,19 +479,19 @@ class G1Rewards:
         params={
             'asset_cfg':SceneEntityCfg(
                 'robot',
-                # joint_names=[".*_hip_yaw_joint",
-                #             ".*_hip_roll_joint",
-                #             ".*_hip_pitch_joint",
-                #             ".*_knee_joint",
-                #             ".*_ankle_pitch_joint", 
-                #             ".*_ankle_roll_joint",
-                #             "left_shoulder_pitch_joint",
-                #             "left_shoulder_roll_joint",
-                #             "left_shoulder_yaw_joint",
-                #             "left_elbow_joint",
-                #             "left_wrist_.*",
-                #             "waist_.*"])
-                joint_names=[".*"])
+                joint_names=[".*_hip_yaw_joint",
+                            ".*_hip_roll_joint",
+                            ".*_hip_pitch_joint",
+                            ".*_knee_joint",
+                            ".*_ankle_pitch_joint", 
+                            ".*_ankle_roll_joint",
+                            "left_shoulder_pitch_joint",
+                            "left_shoulder_roll_joint",
+                            "left_shoulder_yaw_joint",
+                            "left_elbow_joint",
+                            "left_wrist_.*",
+                            "waist_.*"])
+                # joint_names=[".*"])
         },
     )
     # dof_vel_l2 = RewTerm(func=mdp.joint_vel_l2, weight=-1e-5)
@@ -501,19 +501,19 @@ class G1Rewards:
         params={
             'asset_cfg':SceneEntityCfg(
                 'robot',
-                # joint_names=[".*_hip_yaw_joint",
-                #             ".*_hip_roll_joint",
-                #             ".*_hip_pitch_joint",
-                #             ".*_knee_joint",
-                #             ".*_ankle_pitch_joint", 
-                #             ".*_ankle_roll_joint",
-                #             "left_shoulder_pitch_joint",
-                #             "left_shoulder_roll_joint",
-                #             "left_shoulder_yaw_joint",
-                #             "left_elbow_joint",
-                #             "left_wrist_.*",
-                #             "waist_.*"])
-                joint_names=[".*"])
+                joint_names=[".*_hip_yaw_joint",
+                            ".*_hip_roll_joint",
+                            ".*_hip_pitch_joint",
+                            ".*_knee_joint",
+                            ".*_ankle_pitch_joint", 
+                            ".*_ankle_roll_joint",
+                            "left_shoulder_pitch_joint",
+                            "left_shoulder_roll_joint",
+                            "left_shoulder_yaw_joint",
+                            "left_elbow_joint",
+                            "left_wrist_.*",
+                            "waist_.*"])
+                # joint_names=[".*"])
         },
     )
     # action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.005)
@@ -685,6 +685,7 @@ class G1Rewards:
             "command_name": "hands_pose",
             # "penalize_joint_limit": True,
             "penalize_joint_limit": False,
+            "sigma": 50.,
         },
     )
 
