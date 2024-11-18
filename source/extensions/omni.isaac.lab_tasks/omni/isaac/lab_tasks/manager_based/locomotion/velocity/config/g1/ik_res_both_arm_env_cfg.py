@@ -146,11 +146,6 @@ class ActionsCfg:
                                                         ".*_knee_joint",
                                                         ".*_ankle_pitch_joint", 
                                                         ".*_ankle_roll_joint",
-                                                        "left_shoulder_pitch_joint",
-                                                        "left_shoulder_roll_joint",
-                                                        "left_shoulder_yaw_joint",
-                                                        "left_elbow_joint",
-                                                        "left_wrist_.*",
                                                         "waist_.*"
                                                         ],
                                            scale=0.5,
@@ -170,18 +165,38 @@ class ActionsCfg:
                 command_type="pose",
                 use_relative_mode=False,
                 ik_method="dls",
-                # ik_params={"lambda_val": 0.1},
                 ik_params={"lambda_val": 0.05},
-                # use_weighted_jacobian=True,
                 use_weighted_jacobian=False,
-                # use_max_clipping=False,
                 use_max_clipping=True,
                 max_delta_pos=0.5,
                 weight_pos=[1.0, 1.0, 1.0, 1.0, 0., 0., 0.],
-                # weight_pos=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
                 weight_ori=[0., 0., 0., 0., 1.0, 1.0, 1.0],
-                # weight_ori=[0., 0., 0., 0., 0.1, 0.1, 0.1],
-                # weight_ori=[0., 0., 0., 0., 0., 0., 0.],
+                ),
+            scale=1.0,
+            compensate_gravity=True,
+        )
+
+    left_arm = mdp.PassiveIKActionCfg(
+            asset_name="robot",
+            command_name='hands_pose',
+            joint_names=["left_shoulder_pitch_joint",
+                        "left_shoulder_roll_joint",
+                        "left_shoulder_yaw_joint",
+                        "left_elbow_joint",
+                        "left_wrist_.*",],
+
+            body_name="left_hand_palm_link",
+            control_arm='left',
+            controller=DifferentialIKControllerCfg(
+                command_type="pose",
+                use_relative_mode=False,
+                ik_method="dls",
+                ik_params={"lambda_val": 0.05},
+                use_weighted_jacobian=False,
+                use_max_clipping=True,
+                max_delta_pos=0.5,
+                weight_pos=[1.0, 1.0, 1.0, 1.0, 0., 0., 0.],
+                weight_ori=[0., 0., 0., 0., 1.0, 1.0, 1.0],
                 ),
             scale=1.0,
             compensate_gravity=True,
@@ -194,7 +209,19 @@ class ActionsCfg:
                         "right_shoulder_yaw_joint",
                         "right_elbow_joint",
                         "right_wrist_.*",],
-        # scale=0.1,
+        scale=0.3,
+        use_clipping=True,
+        # clip_range=(-0.5, 0.5)
+        clip_range=(-0.2, 0.2)
+    )
+
+    left_arm_res = mdp.ResidualJointPositionActionCfg(
+        asset_name="robot",
+        joint_names=["left_shoulder_pitch_joint",
+                        "left_shoulder_roll_joint",
+                        "left_shoulder_yaw_joint",
+                        "left_elbow_joint",
+                        "left_wrist_.*",],
         scale=0.3,
         use_clipping=True,
         # clip_range=(-0.5, 0.5)
@@ -419,18 +446,6 @@ class G1Rewards:
         params={
             'asset_cfg':SceneEntityCfg(
                 'robot',
-                # joint_names=[".*_hip_yaw_joint",
-                #             ".*_hip_roll_joint",
-                #             ".*_hip_pitch_joint",
-                #             ".*_knee_joint",
-                #             ".*_ankle_pitch_joint", 
-                #             ".*_ankle_roll_joint",
-                #             "left_shoulder_pitch_joint",
-                #             "left_shoulder_roll_joint",
-                #             "left_shoulder_yaw_joint",
-                #             "left_elbow_joint",
-                #             "left_wrist_.*",
-                #             "waist_.*"])
                 joint_names=[".*"])
         },
     )
@@ -440,19 +455,7 @@ class G1Rewards:
         params={
             'asset_cfg':SceneEntityCfg(
                 'robot',
-                joint_names=[".*_hip_yaw_joint",
-                            ".*_hip_roll_joint",
-                            ".*_hip_pitch_joint",
-                            ".*_knee_joint",
-                            ".*_ankle_pitch_joint", 
-                            ".*_ankle_roll_joint",
-                            "left_shoulder_pitch_joint",
-                            "left_shoulder_roll_joint",
-                            "left_shoulder_yaw_joint",
-                            "left_elbow_joint",
-                            "left_wrist_.*",
-                            "waist_.*"])
-                # joint_names=[".*"])
+                joint_names=[".*"])
         },
     )
     ankle_dof_torques_l2 = RewTerm(
@@ -480,18 +483,7 @@ class G1Rewards:
         params={
             'asset_cfg':SceneEntityCfg(
                 'robot',
-                joint_names=[".*_hip_yaw_joint",
-                            ".*_hip_roll_joint",
-                            ".*_hip_pitch_joint",
-                            ".*_knee_joint",
-                            ".*_ankle_pitch_joint", 
-                            ".*_ankle_roll_joint",
-                            "left_shoulder_pitch_joint",
-                            "left_shoulder_roll_joint",
-                            "left_shoulder_yaw_joint",
-                            "left_elbow_joint",
-                            "left_wrist_.*",
-                            "waist_.*"])
+                joint_names=[".*"])
         },
         weight=-0.0002
         # weight=0.
@@ -502,19 +494,7 @@ class G1Rewards:
         params={
             'asset_cfg':SceneEntityCfg(
                 'robot',
-                joint_names=[".*_hip_yaw_joint",
-                            ".*_hip_roll_joint",
-                            ".*_hip_pitch_joint",
-                            ".*_knee_joint",
-                            ".*_ankle_pitch_joint", 
-                            ".*_ankle_roll_joint",
-                            "left_shoulder_pitch_joint",
-                            "left_shoulder_roll_joint",
-                            "left_shoulder_yaw_joint",
-                            "left_elbow_joint",
-                            "left_wrist_.*",
-                            "waist_.*"])
-                # joint_names=[".*"])
+                joint_names=[".*"])
         },
     )
     # dof_vel_l2 = RewTerm(func=mdp.joint_vel_l2, weight=-1e-5)
@@ -524,25 +504,11 @@ class G1Rewards:
         params={
             'asset_cfg':SceneEntityCfg(
                 'robot',
-                joint_names=[".*_hip_yaw_joint",
-                            ".*_hip_roll_joint",
-                            ".*_hip_pitch_joint",
-                            ".*_knee_joint",
-                            ".*_ankle_pitch_joint", 
-                            ".*_ankle_roll_joint",
-                            "left_shoulder_pitch_joint",
-                            "left_shoulder_roll_joint",
-                            "left_shoulder_yaw_joint",
-                            "left_elbow_joint",
-                            "left_wrist_.*",
-                            "waist_.*"])
-                # joint_names=[".*"])
+                joint_names=[".*"])
         },
     )
-    # action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.005)
     action_rate_l2 = RewTerm(func=action_rate_l2, weight=-0.005)
     residual_action_rate_l2 = RewTerm(func=residual_action_rate_l2, weight=-0.005)
-    # termination_penalty = RewTerm(func=mdp.is_terminated, weight=-20.0)
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-20.0)
     zmp_supp_dist = RewTerm(
         func=stand_env.zmp_supp_dist,
@@ -694,10 +660,10 @@ class G1Rewards:
             "asset_cfg": SceneEntityCfg("robot", body_names=".*_ankle_roll_link"),
         },
     )
-    approaching = RewTerm(
+    approaching_right = RewTerm(
         func=arm_track_env.approaching_pose,
         # weight=0.,
-        weight=0.3,
+        weight=0.2,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot", 
@@ -707,9 +673,27 @@ class G1Rewards:
                             "right_elbow_joint",
                             "right_wrist_.*",]),
             "command_name": "hands_pose",
-            # "penalize_joint_limit": True,
             "penalize_joint_limit": False,
-            "sigma": 50.,
+            "arm": "right",
+            "sigma": 20.
+        },
+    )
+    approaching_left = RewTerm(
+        func=arm_track_env.approaching_pose,
+        # weight=0.,
+        weight=0.2,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot", 
+                joint_names=["left_shoulder_pitch_joint",
+                            "left_shoulder_roll_joint",
+                            "left_shoulder_yaw_joint",
+                            "left_elbow_joint",
+                            "left_wrist_.*",]),
+            "command_name": "hands_pose",
+            "penalize_joint_limit": False,
+            "arm": "left",
+            "sigma": 20.
         },
     )
 
@@ -731,11 +715,19 @@ class G1Rewards:
         }
     )
 
-    residual_action_limit = RewTerm(
+    residual_action_limit_right = RewTerm(
         func=action_limits,
-        weight=0.0,
+        weight=-0.1,
         params={
             "action_name": 'right_arm_res'
+        }
+
+    )
+    residual_action_limit_left = RewTerm(
+        func=action_limits,
+        weight=-0.1,
+        params={
+            "action_name": 'left_arm_res'
         }
 
     )
@@ -766,28 +758,12 @@ class TerminationsCfg:
     #     func=max_consecutive_success, 
     #     params={"num_success": 100, "command_name": "global_hand_goal"}
     # )
+    # jump = DoneTerm(
+    #     func=arm_track_env.jump
+    # )
 
 @configclass
 class CommandsCfg:
-    # hands_pose = mdp.LocalHandPoseCommandCfg(
-    #     class_type=mdp.LocalHandPoseCommand,
-    #     asset_name="robot",
-    #     resampling_time_range=(3.0, 3.0),
-    #     left_hand_body_name="left_palm_link",
-    #     right_hand_body_name="right_palm_link",
-    #     debug_vis=True,
-    #     ranges=mdp.LocalHandPoseCommandCfg.Ranges(
-    #         # r_range=(0.4, 0.6),
-    #         # r_range=(0.25, 0.55),
-    #         r_range=(0.3, 0.55),
-    #         theta_range=(-np.pi/4, np.pi/4),
-    #         # z_range=(0.25, 1.0),
-    #         z_range=(0.3, 1.2),
-    #     ),
-    #     hand_shift=0.15,
-    #     delta_yaw=30.
-
-    # )
     hands_pose = mdp.IKHandTrajCommandCfg(
         class_type=mdp.IKHandTrajCommand,
         asset_name="robot",
@@ -800,6 +776,8 @@ class CommandsCfg:
         right_foot_body_name="right_ankle_roll_link",
         torso_body_name="torso_link",
         debug_vis=True,
+        vis_left=True,
+        vis_right=True,
         # mode="cylinder",
         mode="cart",
         frame="foot",

@@ -183,6 +183,9 @@ class IKHandTrajCommandCfg(CommandTermCfg):
 
     make_quat_unique: bool = False
 
+    vis_left: bool = False
+    vis_right: bool = True
+
     mode: Literal["cylinder", "cart"] = MISSING
     frame: Literal["torso", "z-inv", "foot"] = MISSING
     moving_time: float = MISSING
@@ -414,25 +417,6 @@ class IKHandTrajCommand(CommandTerm):
 
         self._update_cylinder_frame()
 
-
-        # curr_hand_s_left_pos, curr_hand_s_left_quat =\
-        #     math_utils.subtract_frame_transforms(
-        #         self.cylinder_pos_w,
-        #         self.cylinder_quat_w,
-        #         self.robot.data.body_state_w[:, self.left_hand_idx, :3],
-        #         self.robot.data.body_state_w[:, self.left_hand_idx, 3:7],
-        # )
-        # curr_hand_s_right_pos, curr_hand_s_right_quat =\
-        #     math_utils.subtract_frame_transforms(
-        #         self.cylinder_pos_w,
-        #         self.cylinder_quat_w,
-        #         self.robot.data.body_state_w[:, self.right_hand_idx, :3],
-        #         self.robot.data.body_state_w[:, self.right_hand_idx, 3:7],
-        # )
-        # self.curr_command_s_left[reset_envs] = \
-        #     th.cat((curr_hand_s_left_pos[reset_envs], curr_hand_s_left_quat[reset_envs]), dim=-1)
-        # self.curr_command_s_right[reset_envs] = \
-        #     th.cat((curr_hand_s_right_pos[reset_envs], curr_hand_s_right_quat[reset_envs]), dim=-1)
         reset_envs = reset_envs[0]
         self.curr_command_s_left[reset_envs, 0] = 0.3
         self.curr_command_s_left[reset_envs, 1] = 0.3
@@ -605,7 +589,6 @@ class IKHandTrajCommand(CommandTerm):
                 self.lerp_command_s_right[:, :3],
                 self.lerp_command_s_right[:, 3:])
 
-    # TODO Need to support both hand 
     def get_bbox_right(self):
         body_pose_w_right = self.robot.data.body_state_w[:, self.right_hand_idx]
         #right hand
@@ -639,23 +622,27 @@ class IKHandTrajCommand(CommandTerm):
     def _set_debug_vis_impl(self, debug_vis: bool):
         # Create markers if necessary for the first time
         if debug_vis:
-            if not hasattr(self, "goal_pose_visualizer_left"):
-                # self.goal_pose_visualizer_left = VisualizationMarkers(
-                #     self.cfg.goal_pose_visualizer_cfg
-                # )
-                self.goal_pose_visualizer_right = VisualizationMarkers(
-                    self.cfg.goal_pose_visualizer_cfg
-                )
-                # self.current_pose_visualizer_left = VisualizationMarkers(
-                #     self.cfg.current_pose_visualizer_cfg
-                # )
-                self.current_pose_visualizer_right = VisualizationMarkers(
-                    self.cfg.current_pose_visualizer_cfg
-                )
-            # self.goal_pose_visualizer_left.set_visibility(True)
-            self.goal_pose_visualizer_right.set_visibility(True)
-            # self.current_pose_visualizer_left.set_visibility(True)
-            self.current_pose_visualizer_right.set_visibility(True)
+            if not hasattr(self, "goal_pose_visualizer_right"):
+                if self.cfg.vis_left:
+                    self.goal_pose_visualizer_left = VisualizationMarkers(
+                        self.cfg.goal_pose_visualizer_cfg
+                    )
+                    self.current_pose_visualizer_left = VisualizationMarkers(
+                        self.cfg.current_pose_visualizer_cfg
+                    )
+                if self.cfg.vis_right:
+                    self.goal_pose_visualizer_right = VisualizationMarkers(
+                        self.cfg.goal_pose_visualizer_cfg
+                    )
+                    self.current_pose_visualizer_right = VisualizationMarkers(
+                        self.cfg.current_pose_visualizer_cfg
+                    )
+            if self.cfg.vis_left:
+                self.goal_pose_visualizer_left.set_visibility(True)
+                self.current_pose_visualizer_left.set_visibility(True)
+            if self.cfg.vis_right:
+                self.goal_pose_visualizer_right.set_visibility(True)
+                self.current_pose_visualizer_right.set_visibility(True)
             if self.cfg.vis_hand_bbox:
                 if not hasattr(self, "bbox_visualizer"):
                     colors = list(itertools.product([0., 1.], repeat=3))
@@ -691,38 +678,36 @@ class IKHandTrajCommand(CommandTerm):
         # Check if robot is initialized
         if not self.robot.is_initialized:
             return
-        # self._update_command()
-        # self.goal_pose_visualizer_left.visualize(
-        #     self.lerp_command_w_left[:, :3], self.lerp_command_w_left[:, 3:]
-        # )
-        self.goal_pose_visualizer_right.visualize(
-            self.lerp_command_w_right[:, :3], self.lerp_command_w_right[:, 3:]
-        )
-        # body_pose_w_left = self.robot.data.body_state_w[:, self.left_hand_idx]
-        # self.current_pose_visualizer_left.visualize(
-        #     body_pose_w_left[:, :3], body_pose_w_left[:, 3:7]
-        # )
-        body_pose_w_right = self.robot.data.body_state_w[:, self.right_hand_idx]
-        self.current_pose_visualizer_right.visualize(
-            body_pose_w_right[:, :3], body_pose_w_right[:, 3:7]
-        )
+        
+        if self.cfg.vis_left:
+            self.goal_pose_visualizer_left.visualize(
+                self.lerp_command_w_left[:, :3], self.lerp_command_w_left[:, 3:]
+            )
+            body_pose_w_left = self.robot.data.body_state_w[:, self.left_hand_idx]
+            self.current_pose_visualizer_left.visualize(
+                body_pose_w_left[:, :3], body_pose_w_left[:, 3:7]
+            )
+        if self.cfg.vis_right:
+            self.goal_pose_visualizer_right.visualize(
+                self.lerp_command_w_right[:, :3], self.lerp_command_w_right[:, 3:]
+            )
+            body_pose_w_right = self.robot.data.body_state_w[:, self.right_hand_idx]
+            self.current_pose_visualizer_right.visualize(
+                body_pose_w_right[:, :3], body_pose_w_right[:, 3:7]
+            )
         if self.cfg.vis_hand_bbox:
             #right hand
             rhb, rgb = self.get_bbox_right()
-            lhbb = self._hand_bboxes.clone()
-            lhbb[..., 1] *=-1
-            body_pose_w_left = self.robot.data.body_state_w[:, self.left_hand_idx]
-            lhb = math_utils.transform_points(
-                lhbb,
-                body_pose_w_left[..., :3],
-                body_pose_w_left[..., 3:7]
-            )
-            lgb = math_utils.transform_points(
-                lhbb,
-                self.lerp_command_w_left[..., :3],
-                self.lerp_command_w_left[..., 3:7]
-            )
+            lhb, lgb = self.get_bbox_left()
 
-            bb = th.cat([rhb, rgb, lhb, lgb], dim=0)
+            vis_bbox = []
+            if self.cfg.vis_left:
+                vis_bbox.append(lhb)
+                vis_bbox.append(lgb)
+            if self.cfg.vis_right:
+                vis_bbox.append(rhb)
+                vis_bbox.append(rgb)
+
+            bb = th.cat(vis_bbox, dim=0)
             for idx, vis in enumerate(self.bbox_visualizer):
                 vis.visualize(bb[..., idx, :])
