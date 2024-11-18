@@ -799,6 +799,9 @@ class CommandsCfg:
             # x_range=(0.05, 0.4),
             y_left_range=(0., 0.45),
             y_right_range=(-0.45, 0.),
+            noise_roll_range=(-0.5, 0.5),
+            noise_pitch_range=(-0.5, 0.5),
+            noise_yaw_range=(-0.5, 0.5),
 
         ),
     )

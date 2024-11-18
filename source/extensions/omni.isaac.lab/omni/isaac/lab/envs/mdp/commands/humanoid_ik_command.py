@@ -206,6 +206,11 @@ class IKHandTrajCommandCfg(CommandTermCfg):
         x_range: tuple[float, float] = MISSING  # min, max [m]
 
         z_range: tuple[float, float] = MISSING  # min, max [m]
+
+        # Ranges for the angle noise
+        noise_roll_range: tuple[float, float] = (-0.0, 0.0)
+        noise_pitch_range: tuple[float, float] = (-0.0, 0.0)
+        noise_yaw_range: tuple[float, float] = (-0.0, 0.0)
     
     ranges: Ranges = MISSING
 
@@ -417,6 +422,28 @@ class IKHandTrajCommand(CommandTerm):
 
         self._update_cylinder_frame()
 
+        # Set current pose as the current hand position
+
+        curr_hand_s_left_pos, curr_hand_s_left_quat =\
+            math_utils.subtract_frame_transforms(
+                self.cylinder_pos_w,
+                self.cylinder_quat_w,
+                self.robot.data.body_state_w[:, self.left_hand_idx, :3],
+                self.robot.data.body_state_w[:, self.left_hand_idx, 3:7],
+        )
+        curr_hand_s_right_pos, curr_hand_s_right_quat =\
+            math_utils.subtract_frame_transforms(
+                self.cylinder_pos_w,
+                self.cylinder_quat_w,
+                self.robot.data.body_state_w[:, self.right_hand_idx, :3],
+                self.robot.data.body_state_w[:, self.right_hand_idx, 3:7],
+        )
+        self.curr_command_s_left[env_ids] = \
+            th.cat((curr_hand_s_left_pos[env_ids], curr_hand_s_left_quat[env_ids]), dim=-1)
+        self.curr_command_s_right[env_ids] = \
+            th.cat((curr_hand_s_right_pos[env_ids], curr_hand_s_right_quat[env_ids]), dim=-1)
+
+        # In case of reset, since the agent falls above the ground, set it as fixed pose
         reset_envs = reset_envs[0]
         self.curr_command_s_left[reset_envs, 0] = 0.3
         self.curr_command_s_left[reset_envs, 1] = 0.3
@@ -439,10 +466,15 @@ class IKHandTrajCommand(CommandTerm):
             next_euler_s_left = th.zeros((num_envs, 3), device=device)
             next_euler_s_left[..., 2] = next_pos_s_left[..., 1]
 
-            noise_left = th.empty((num_envs, 3), device=device).uniform_(
-                -np.pi * self.cfg.angle_noise/180., 
-                np.pi * self.cfg.angle_noise/180.)
-            next_euler_s_left = math_utils.wrap_to_pi(next_euler_s_left+noise_left)
+
+            noise_left = th.zeros((num_envs, 3), device=device)
+            noise_left[..., 0] = th.empty(num_envs, device=device).uniform_(
+                *self.cfg.ranges.noise_roll_range)
+            noise_left[..., 1] = th.empty(num_envs, device=device).uniform_(
+                *self.cfg.ranges.noise_pitch_range)
+            noise_left[..., 2] = th.empty(num_envs, device=device).uniform_(
+                *self.cfg.ranges.noise_yaw_range)
+            next_euler_s_left = math_utils.wrap_to_pi(next_euler_s_left + noise_left)
 
             self.next_command_s_left[env_ids, 3:7] = math_utils.quat_from_euler_xyz(
                 next_euler_s_left[..., 0],
@@ -463,10 +495,14 @@ class IKHandTrajCommand(CommandTerm):
             next_euler_s_right = th.zeros((num_envs, 3), device=device)
             next_euler_s_right[..., 2] = next_pos_s_right[..., 1]
 
-            noise_right = th.empty((num_envs, 3), device=device).uniform_(
-                -np.pi * self.cfg.angle_noise/180., 
-                np.pi * self.cfg.angle_noise/180.)
-            next_euler_s_right = math_utils.wrap_to_pi(next_euler_s_right+noise_right)
+            noise_right = th.zeros((num_envs, 3), device=device)
+            noise_right[..., 0] = th.empty(num_envs, device=device).uniform_(
+                *self.cfg.ranges.noise_roll_range)
+            noise_right[..., 1] = th.empty(num_envs, device=device).uniform_(
+                *self.cfg.ranges.noise_pitch_range)
+            noise_right[..., 2] = th.empty(num_envs, device=device).uniform_(
+                *self.cfg.ranges.noise_yaw_range)
+            next_euler_s_right = math_utils.wrap_to_pi(next_euler_s_right + noise_right)
 
             self.next_command_s_right[env_ids, 3:7] = math_utils.quat_from_euler_xyz(
                 next_euler_s_right[..., 0],
@@ -486,10 +522,14 @@ class IKHandTrajCommand(CommandTerm):
 
             next_euler_s_left = th.zeros((num_envs, 3), device=device)
 
-            noise_left = th.empty((num_envs, 3), device=device).uniform_(
-                -np.pi * self.cfg.angle_noise/180., 
-                np.pi * self.cfg.angle_noise/180.)
-            next_euler_s_left = math_utils.wrap_to_pi(next_euler_s_left+noise_left)
+            noise_left = th.zeros((num_envs, 3), device=device)
+            noise_left[..., 0] = th.empty(num_envs, device=device).uniform_(
+                *self.cfg.ranges.noise_roll_range)
+            noise_left[..., 1] = th.empty(num_envs, device=device).uniform_(
+                *self.cfg.ranges.noise_pitch_range)
+            noise_left[..., 2] = th.empty(num_envs, device=device).uniform_(
+                *self.cfg.ranges.noise_yaw_range)
+            next_euler_s_left = math_utils.wrap_to_pi(next_euler_s_left + noise_left)
 
             self.next_command_s_left[env_ids, 3:7] = math_utils.quat_from_euler_xyz(
                 next_euler_s_left[..., 0],
@@ -510,10 +550,15 @@ class IKHandTrajCommand(CommandTerm):
 
             next_euler_s_right = th.zeros((num_envs, 3), device=device)
 
-            noise_right = th.empty((num_envs, 3), device=device).uniform_(
-                -np.pi * self.cfg.angle_noise/180., 
-                np.pi * self.cfg.angle_noise/180.)
-            next_euler_s_right = math_utils.wrap_to_pi(next_euler_s_right+noise_right)
+
+            noise_right = th.zeros((num_envs, 3), device=device)
+            noise_right[..., 0] = th.empty(num_envs, device=device).uniform_(
+                *self.cfg.ranges.noise_roll_range)
+            noise_right[..., 1] = th.empty(num_envs, device=device).uniform_(
+                *self.cfg.ranges.noise_pitch_range)
+            noise_right[..., 2] = th.empty(num_envs, device=device).uniform_(
+                *self.cfg.ranges.noise_yaw_range)
+            next_euler_s_right = math_utils.wrap_to_pi(next_euler_s_right + noise_right)
 
             self.next_command_s_right[env_ids, 3:7] = math_utils.quat_from_euler_xyz(
                 next_euler_s_right[..., 0],
