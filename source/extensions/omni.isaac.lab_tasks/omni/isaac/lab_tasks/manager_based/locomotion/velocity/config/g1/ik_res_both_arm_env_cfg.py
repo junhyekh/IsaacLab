@@ -1013,3 +1013,82 @@ class G1StandingEnvCfg_PLAY(G1StandingEnvCfg):
         # remove random pushing
         self.events.base_external_force_torque = None
         # self.events.push_robot = None
+
+@configclass
+class LcActionsCfg(ActionsCfg):
+    learned_controller = mdp.NetControllerCfg(
+    asset_name="robot",
+    ckpt='/gate/ckpt/ik_res_both_v0/model_2999.pt',
+    obs_group='controller',
+    obs_dim=142,
+    has_last_action_as_obs=True,
+    actions={
+        'joint_pos': mdp.JointPositionActionCfg(asset_name="robot",
+                                        joint_names=[".*_hip_yaw_joint",
+                                                    ".*_hip_roll_joint",
+                                                    ".*_hip_pitch_joint",
+                                                    ".*_knee_joint",
+                                                    ".*_ankle_pitch_joint", 
+                                                    ".*_ankle_roll_joint",
+                                                    "waist_.*"
+                                                    ],
+                                        scale=0.5,
+                                        use_default_offset=True),
+        'right_arm_res': mdp.ResidualJointPositionActionCfg(
+                    asset_name="robot",
+                    joint_names=["right_shoulder_pitch_joint",
+                                    "right_shoulder_roll_joint",
+                                    "right_shoulder_yaw_joint",
+                                    "right_elbow_joint",
+                                    "right_wrist_.*",],
+                    scale=0.3,
+                    use_clipping=True,
+                    # clip_range=(-0.5, 0.5)
+                    clip_range=(-0.2, 0.2)
+                ),
+        'left_arm_res':mdp.ResidualJointPositionActionCfg(
+                asset_name="robot",
+                joint_names=["left_shoulder_pitch_joint",
+                                "left_shoulder_roll_joint",
+                                "left_shoulder_yaw_joint",
+                                "left_elbow_joint",
+                                "left_wrist_.*",],
+                scale=0.3,
+                use_clipping=True,
+                # clip_range=(-0.5, 0.5)
+                clip_range=(-0.2, 0.2)
+            )}
+    )
+
+@configclass
+class LcObs(ObservationsCfg):
+    controller = ObservationsCfg.PolicyCfg()
+    controller.concatenate_terms = False
+
+
+@configclass
+class G1StandingEnvCfg_PLAY_LC(G1StandingEnvCfg_PLAY):
+    """
+    Example cfg with low-level controller
+    """
+
+    actions = LcActionsCfg()
+    observations = LcObs()
+
+    def __post_init__(self) -> None:
+        # post init of parent
+        super().__post_init__()
+        self.actions.right_arm_res = None
+        self.actions.left_arm_res= None
+        self.actions.joint_pos = None
+        self.rewards.residual_action_limit_left = None
+        self.rewards.residual_action_limit_right = None
+        self.rewards.residual_action_norm = None
+        # make a smaller scene for play
+        self.scene.num_envs = 50
+        self.scene.env_spacing = 2.5
+        # disable randomization for play
+        self.observations.policy.enable_corruption = False
+        # remove random pushing
+        self.events.base_external_force_torque = None
+        # self.events.push_robot = None

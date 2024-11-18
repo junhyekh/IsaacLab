@@ -304,6 +304,11 @@ class NetControllerCfg(ActionTermCfg):
     obs_group: str = MISSING
     ckpt: str = MISSING
 
+    #FIXME Currently parsing obs_dim from exported cfg is not possible
+    # Please hand over correct value yourself for now
+    obs_dim: int = MISSING
+    has_last_action_as_obs: bool = True
+
     loading_type: Literal['rsl_rl', 'direct'] = 'rsl_rl'
 
     class_type: type[ActionTerm] = learnable_actions.NetController

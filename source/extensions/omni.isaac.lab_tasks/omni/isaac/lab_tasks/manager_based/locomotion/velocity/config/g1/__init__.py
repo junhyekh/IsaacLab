@@ -225,3 +225,13 @@ gym.register(
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:G1ArmTrackPPORunnerCfg",
     },
 )
+
+gym.register(
+    id="Arm-track-both-IK-res-G1-LC-Play-v0",
+    entry_point="omni.isaac.lab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": ik_res_both_arm_env_cfg.G1StandingEnvCfg_PLAY_LC,
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:G1ArmTrackPPORunnerCfg",
+    },
+)
